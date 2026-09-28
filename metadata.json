@@ -1,0 +1,11 @@
+{
+  "name": "WhaRunner - Zimbabwe WhatsApp Errands & Runner PWA",
+  "description": "WhatsApp-integrated errands and runner PWA for groceries, pharmacy, market runs, and parcel deliveries across Zimbabwe.",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
+

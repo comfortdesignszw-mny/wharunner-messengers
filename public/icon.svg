@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#075E54"/>
+      <stop offset="60%" stop-color="#128C7E"/>
+      <stop offset="100%" stop-color="#25D366"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#FBBF24"/>
+    </linearGradient>
+  </defs>
+  <!-- Background with safe zone -->
+  <rect width="512" height="512" rx="110" fill="url(#bg)"/>
+  
+  <!-- Outer subtle ring -->
+  <circle cx="256" cy="256" r="210" fill="none" stroke="#ffffff" stroke-width="4" opacity="0.2"/>
+
+  <!-- WhatsApp Speech Bubble Base -->
+  <path d="M256 100 C170 100 100 170 100 256 C100 286 108 314 124 338 L104 404 L173 386 C197 399 226 406 256 406 C342 406 412 336 412 250 C412 164 342 100 256 100 Z" fill="#ffffff" filter="drop-shadow(0 12px 24px rgba(0,0,0,0.15))"/>
+  
+  <!-- Inner Green Accent -->
+  <circle cx="256" cy="250" r="120" fill="#128C7E" opacity="0.1"/>
+
+  <!-- Runner / Lightning Courier Symbol in WhatsApp Bubble -->
+  <!-- Fast Delivery Box & Motion Lines -->
+  <g transform="translate(180, 165) scale(0.62)">
+    <!-- Motion Speed Lines -->
+    <line x1="-30" y1="90" x2="30" y2="90" stroke="#128C7E" stroke-width="14" stroke-linecap="round" />
+    <line x1="-50" y1="140" x2="10" y2="140" stroke="#128C7E" stroke-width="14" stroke-linecap="round" />
+    <line x1="-20" y1="190" x2="40" y2="190" stroke="#25D366" stroke-width="14" stroke-linecap="round" />
+
+    <!-- Runner Parcel / Errand Box -->
+    <polygon points="120,40 210,90 120,140 30,90" fill="url(#gold)" />
+    <polygon points="30,90 120,140 120,240 30,190" fill="#D97706" />
+    <polygon points="120,140 210,90 210,190 120,240" fill="#F59E0B" />
+    
+    <!-- White Delivery Tape & Checkmark -->
+    <path d="M100 170 L115 185 L145 150" fill="none" stroke="#ffffff" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Zimbabwe Flag Tri-color Accent Dot -->
+  <circle cx="360" cy="140" r="14" fill="#008000"/>
+  <circle cx="380" cy="155" r="14" fill="#FCD116"/>
+  <circle cx="395" cy="175" r="14" fill="#C8102E"/>
+</svg>
