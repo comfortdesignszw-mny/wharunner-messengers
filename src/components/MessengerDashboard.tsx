@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import type { Messenger, Order, MessengerStats } from '../types';
 import { ERRAND_TYPE_LABELS, TRANSPORT_MODE_LABELS, buildWhatsAppDeepLink } from '../utils/whatsapp';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
+import { authClient } from '../lib/auth-client';
+import { AdminDashboard } from './AdminDashboard';
 import {
   CheckCircle2,
   XCircle,
@@ -19,13 +21,17 @@ import {
   ShieldCheck,
   ExternalLink,
   ChevronDown,
+  UserPlus,
+  Bike,
 } from 'lucide-react';
 
 interface MessengerDashboardProps {
-  currentMessenger: Messenger;
+  currentMessenger?: Messenger | null;
   allMessengers: Messenger[];
   onSwitchMessenger: (messenger: Messenger) => void;
   onViewPublicProfile: (messenger: Messenger) => void;
+  onGoToOnboarding?: () => void;
+  onRefreshMessengers?: () => void;
 }
 
 export const MessengerDashboard: React.FC<MessengerDashboardProps> = ({
@@ -33,23 +39,81 @@ export const MessengerDashboard: React.FC<MessengerDashboardProps> = ({
   allMessengers,
   onSwitchMessenger,
   onViewPublicProfile,
+  onGoToOnboarding,
+  onRefreshMessengers,
 }) => {
   const isOnline = useOnlineStatus();
+  const { data: session } = authClient.useSession();
   const [orders, setOrders] = useState<Order[]>([]);
   const [stats, setStats] = useState<MessengerStats | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const currentUserEmail = session?.user?.email?.toLowerCase();
+  const [dbIsAdmin, setDbIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const checkDbRole = async () => {
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { 'x-user-email': session?.user?.email || '' },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.isAdmin) {
+            setDbIsAdmin(true);
+          }
+        }
+      } catch (e) {
+        console.warn('DB role check notice:', e);
+      }
+    };
+    if (session?.user?.email) {
+      checkDbRole();
+    }
+  }, [session?.user?.email]);
+
+  const isAdmin =
+    currentUserEmail === 'comfort.designszw@gmail.com' ||
+    (session?.user as any)?.role === 'admin' ||
+    dbIsAdmin;
+
+  // Toggle for Admin inside Runner Hub
+  const [adminViewTab, setAdminViewTab] = useState<'admin' | 'runner'>(
+    isAdmin && !currentMessenger ? 'admin' : isAdmin ? 'admin' : 'runner'
+  );
+
+  useEffect(() => {
+    if (isAdmin) {
+      setAdminViewTab('admin');
+    }
+  }, [isAdmin]);
 
   // Counter charge state per order: { [orderId]: counterChargeString }
   const [counterCharges, setCounterCharges] = useState<Record<string, string>>({});
   const [activeCounterInputId, setActiveCounterInputId] = useState<string | null>(null);
   const [processingOrderId, setProcessingOrderId] = useState<string | null>(null);
 
+  // REBAC: Filter messengers that this user has rights to manage
+  const accessibleMessengers = isAdmin
+    ? allMessengers
+    : allMessengers.filter(
+        (m) => m.owner_email && currentUserEmail && m.owner_email.toLowerCase() === currentUserEmail
+      );
+
   const fetchDashboardData = async () => {
+    if (!currentMessenger?.id) {
+      setLoading(false);
+      return;
+    }
     try {
-      // Fetch orders for this messenger
+      // Fetch orders for this messenger with user header for REBAC
       const [ordersRes, statsRes] = await Promise.all([
-        fetch(`/api/messengers/${currentMessenger.id}/orders`),
-        fetch(`/api/messengers/${currentMessenger.id}/stats`),
+        fetch(`/api/messengers/${currentMessenger.id}/orders`, {
+          headers: { 'x-user-email': session?.user?.email || '' },
+        }),
+        fetch(`/api/messengers/${currentMessenger.id}/stats`, {
+          headers: { 'x-user-email': session?.user?.email || '' },
+        }),
       ]);
 
       if (ordersRes.ok) {
@@ -68,10 +132,14 @@ export const MessengerDashboard: React.FC<MessengerDashboardProps> = ({
   };
 
   useEffect(() => {
-    fetchDashboardData();
-    const interval = setInterval(fetchDashboardData, 4000);
-    return () => clearInterval(interval);
-  }, [currentMessenger.id]);
+    if (currentMessenger?.id) {
+      fetchDashboardData();
+      const interval = setInterval(fetchDashboardData, 4000);
+      return () => clearInterval(interval);
+    } else {
+      setLoading(false);
+    }
+  }, [currentMessenger?.id]);
 
   // Accept errand
   const handleAccept = async (orderId: string, withCounter = false) => {
@@ -143,8 +211,97 @@ export const MessengerDashboard: React.FC<MessengerDashboardProps> = ({
     (o) => o.status === 'completed' || o.status === 'rejected' || o.status === 'cancelled'
   );
 
+  // 1. If Admin has selected Admin Desk view inside Runner Hub
+  if (isAdmin && adminViewTab === 'admin') {
+    return (
+      <div className="space-y-6">
+        {/* Admin Header Switcher */}
+        <div className="bg-white rounded-3xl p-4 border border-slate-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="text-xs font-black text-slate-900">
+              Admin Console Auto-Detected: comfort.designszw@gmail.com
+            </span>
+          </div>
+
+          <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs font-bold w-full sm:w-auto">
+            <button
+              onClick={() => setAdminViewTab('admin')}
+              className="flex-1 sm:flex-none px-3.5 py-1.5 rounded-xl bg-emerald-600 text-white shadow-xs transition cursor-pointer"
+            >
+              👑 Admin Console & KYC
+            </button>
+            <button
+              onClick={() => setAdminViewTab('runner')}
+              className="flex-1 sm:flex-none px-3.5 py-1.5 rounded-xl text-slate-600 hover:text-slate-900 transition cursor-pointer"
+            >
+              🚴 My Runner Hub
+            </button>
+          </div>
+        </div>
+
+        {/* Embedded Admin Dashboard */}
+        <AdminDashboard
+          messengers={allMessengers}
+          onRefreshMessengers={onRefreshMessengers || (() => {})}
+        />
+      </div>
+    );
+  }
+
+  // 2. If user has no active runner profile yet
+  if (!currentMessenger) {
+    return (
+      <div className="max-w-md mx-auto py-12 px-6 bg-white rounded-3xl border border-slate-200 shadow-sm text-center space-y-4">
+        <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-800 mx-auto flex items-center justify-center">
+          <Bike className="w-7 h-7 text-emerald-600" />
+        </div>
+        <h3 className="text-lg font-extrabold text-slate-900">No Runner Profile Found</h3>
+        <p className="text-xs text-slate-500 leading-relaxed">
+          {isAdmin
+            ? 'You are logged in as Admin. Switch to the Admin Console to review applicant KYC and manage users, or register your own runner profile.'
+            : 'You haven’t registered a runner profile yet. Join as a verified runner to start receiving errand requests and earning across Zimbabwe.'}
+        </p>
+
+        <div className="pt-2 flex flex-col sm:flex-row justify-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => setAdminViewTab('admin')}
+              className="py-2.5 px-4 rounded-xl bg-emerald-800 hover:bg-emerald-900 text-white font-bold text-xs shadow-xs transition cursor-pointer"
+            >
+              Open Admin Console
+            </button>
+          )}
+          <button
+            onClick={onGoToOnboarding}
+            className="py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <UserPlus className="w-4 h-4" />
+            <span>+ Join as a Runner</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
+      {/* If Admin is viewing runner hub, provide the switch back to Admin Console */}
+      {isAdmin && (
+        <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs flex items-center justify-between">
+          <div className="text-xs font-bold text-slate-800 flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+            <span>Admin Active • Viewing Runner Task Mode</span>
+          </div>
+          <button
+            onClick={() => setAdminViewTab('admin')}
+            className="px-3 py-1 rounded-xl bg-slate-100 hover:bg-emerald-50 hover:text-emerald-800 border border-slate-200 text-xs font-bold text-slate-700 transition cursor-pointer"
+          >
+            Switch to Admin Console & KYC Desk →
+          </button>
+        </div>
+      )}
+
       {/* Offline Banner for Messenger */}
       {!isOnline && (
         <div className="rounded-2xl bg-amber-50 border border-amber-200 p-4 text-xs text-amber-800 flex items-center gap-3">
@@ -182,24 +339,26 @@ export const MessengerDashboard: React.FC<MessengerDashboardProps> = ({
 
         {/* Runner Switcher & Profile View */}
         <div className="flex items-center gap-2 w-full md:w-auto">
-          <select
-            value={currentMessenger.id}
-            onChange={(e) => {
-              const found = allMessengers.find((m) => m.id === e.target.value);
-              if (found) onSwitchMessenger(found);
-            }}
-            className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-700"
-          >
-            {allMessengers.map((m) => (
-              <option key={m.id} value={m.id}>
-                Switch runner: {m.name} ({m.transport_mode})
-              </option>
-            ))}
-          </select>
+          {accessibleMessengers.length > 1 && (
+            <select
+              value={currentMessenger.id}
+              onChange={(e) => {
+                const found = accessibleMessengers.find((m) => m.id === e.target.value);
+                if (found) onSwitchMessenger(found);
+              }}
+              className="text-xs font-semibold px-3 py-2 rounded-xl border border-slate-300 bg-slate-50 text-slate-700"
+            >
+              {accessibleMessengers.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {isAdmin ? `[Admin] ${m.name}` : m.name} ({m.transport_mode})
+                </option>
+              ))}
+            </select>
+          )}
 
           <button
             onClick={() => onViewPublicProfile(currentMessenger)}
-            className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition whitespace-nowrap"
+            className="px-3 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 transition whitespace-nowrap cursor-pointer"
           >
             View Public Profile
           </button>

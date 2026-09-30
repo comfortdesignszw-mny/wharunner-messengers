@@ -41,6 +41,8 @@ export interface Messenger {
   errands_completed: number;
   errands_accepted: number;
   is_active: boolean;
+  owner_email?: string | null;
+  owner_id?: string | null;
   national_id_front?: string | null;
   national_id_back?: string | null;
   driver_licence_front?: string | null;

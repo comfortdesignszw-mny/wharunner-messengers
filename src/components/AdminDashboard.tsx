@@ -18,6 +18,12 @@ import {
   ExternalLink,
   X,
   Search,
+  UserCheck,
+  UserX,
+  Key,
+  Trash2,
+  Mail,
+  Phone,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
@@ -29,8 +35,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   messengers: initialMessengers,
   onRefreshMessengers,
 }) => {
-  const [activeTab, setActiveTab] = useState<'kyc' | 'overview'>('kyc');
+  const [activeTab, setActiveTab] = useState<'kyc' | 'overview' | 'users'>('kyc');
   const [allMessengers, setAllMessengers] = useState<Messenger[]>(initialMessengers);
+  const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
+  const [userSearch, setUserSearch] = useState('');
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -45,9 +53,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const fetchAdminData = async () => {
     try {
       setLoading(true);
-      const [statsRes, messengersRes] = await Promise.all([
+      const [statsRes, messengersRes, usersRes] = await Promise.all([
         fetch('/api/admin/stats'),
         fetch('/api/admin/messengers'),
+        fetch('/api/admin/users'),
       ]);
 
       if (statsRes.ok) {
@@ -59,10 +68,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         const messengersData = await messengersRes.json();
         setAllMessengers(messengersData);
       }
-    } catch (e) {
-      console.error(e);
+
+      if (usersRes.ok) {
+        const usersData = await usersRes.json();
+        setRegisteredUsers(usersData);
+      }
+    } catch (err) {
+      console.error('Failed to fetch admin data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUpdateUserRole = async (userId: string, newRole: string) => {
+    try {
+      const res = await fetch(`/api/admin/users/${userId}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ role: newRole }),
+      });
+      if (res.ok) {
+        setRegisteredUsers((prev) =>
+          prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
+        );
+      }
+    } catch (e) {
+      alert('Failed to update user role');
+    }
+  };
+
+  const handleDeleteUser = async (userId: string, userEmail: string) => {
+    if (!confirm(`Are you sure you want to remove user ${userEmail}?`)) return;
+    try {
+      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      if (res.ok) {
+        setRegisteredUsers((prev) => prev.filter((u) => u.id !== userId));
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to remove user');
+      }
+    } catch (e) {
+      alert('Error removing user');
     }
   };
 
@@ -146,8 +192,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* Header with Refresh & Tabs */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-extrabold text-slate-900">Admin Control & KYC Desk</h2>
-          <p className="text-xs text-slate-500">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-xl font-extrabold text-slate-900">Admin Control & KYC Desk</h2>
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-[11px] font-extrabold">
+              👑 comfort.designszw@gmail.com (Super Admin)
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
             Review applicant National IDs & Driver's Licenses, verify runners, and monitor platform operations.
           </p>
         </div>
@@ -179,8 +230,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              <Users className="w-3.5 h-3.5" />
+              <Package className="w-3.5 h-3.5" />
               <span>Fleet & Orders</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('users')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                activeTab === 'users'
+                  ? 'bg-white text-emerald-800 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Users className="w-3.5 h-3.5" />
+              <span>Users ({registeredUsers.length})</span>
             </button>
           </div>
 
@@ -660,6 +722,149 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: REGISTERED USERS & ACCOUNTS */}
+      {activeTab === 'users' && (
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900">Registered Users & Authentication Console</h3>
+              <p className="text-xs text-slate-500">
+                All platform users (Google SSO, Phone & Password, and Email credentials) with runner linkage.
+              </p>
+            </div>
+
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={userSearch}
+                onChange={(e) => setUserSearch(e.target.value)}
+                placeholder="Search user name or email..."
+                className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+              />
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px]">
+                  <th className="pb-3">User</th>
+                  <th className="pb-3">Auth Provider</th>
+                  <th className="pb-3">Role</th>
+                  <th className="pb-3">Runner Status</th>
+                  <th className="pb-3">Registered</th>
+                  <th className="pb-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {registeredUsers
+                  .filter((u) => {
+                    if (!userSearch) return true;
+                    const q = userSearch.toLowerCase();
+                    return (
+                      u.name?.toLowerCase().includes(q) ||
+                      u.email?.toLowerCase().includes(q) ||
+                      u.phone?.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((u) => {
+                    const isSuperAdmin = u.email === 'comfort.designszw@gmail.com';
+                    return (
+                      <tr key={u.id} className="hover:bg-slate-50/70 transition">
+                        <td className="py-3 font-semibold text-slate-900">
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                              {u.name?.charAt(0).toUpperCase() || 'U'}
+                            </div>
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-slate-900">{u.name}</span>
+                                {isSuperAdmin && (
+                                  <span className="px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-900 text-[9px] font-black uppercase">
+                                    Admin
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono flex items-center gap-1 mt-0.5">
+                                {u.email.includes('wharunner.internal') ? (
+                                  <>
+                                    <Phone className="w-3 h-3 text-emerald-600" />
+                                    <span>{u.phone || u.email.replace(/[^\d+]/g, '')}</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Mail className="w-3 h-3 text-slate-400" />
+                                    <span>{u.email}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="py-3">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-700">
+                            {u.auth_provider === 'google' && 'Google SSO'}
+                            {u.auth_provider === 'phone_virtual' && 'Phone & Password'}
+                            {u.auth_provider === 'credentials' && 'Email & Password'}
+                            {!['google', 'phone_virtual', 'credentials'].includes(u.auth_provider) && (u.auth_provider || 'Direct')}
+                          </span>
+                        </td>
+
+                        <td className="py-3">
+                          <select
+                            value={u.role || 'user'}
+                            disabled={isSuperAdmin}
+                            onChange={(e) => handleUpdateUserRole(u.id, e.target.value)}
+                            className="px-2 py-1 rounded-lg border border-slate-200 text-xs font-bold text-slate-800 bg-white"
+                          >
+                            <option value="user">User / Client</option>
+                            <option value="runner">Runner</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        </td>
+
+                        <td className="py-3">
+                          {u.runner_id ? (
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                u.runner_is_verified
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800'
+                              }`}
+                            >
+                              {u.runner_is_verified ? 'Verified Runner' : `Pending KYC (${u.runner_transport_mode || 'runner'})`}
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-400">None</span>
+                          )}
+                        </td>
+
+                        <td className="py-3 text-[11px] text-slate-500">
+                          {u.created_at ? new Date(u.created_at).toLocaleDateString() : 'Active'}
+                        </td>
+
+                        <td className="py-3 text-right">
+                          {!isSuperAdmin && (
+                            <button
+                              onClick={() => handleDeleteUser(u.id, u.email)}
+                              className="p-1.5 rounded-lg text-rose-500 hover:bg-rose-50 hover:text-rose-700 transition"
+                              title="Remove user"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

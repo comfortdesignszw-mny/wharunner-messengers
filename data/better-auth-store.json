@@ -1,92 +1,37 @@
 {
   "user": [
     {
-      "name": "Admin Officer",
-      "email": "admin@wharunner.co.zw",
+      "name": "Comfort Admin",
+      "email": "comfort.designszw@gmail.com",
       "emailVerified": false,
-      "createdAt": "2026-09-28T13:32:47.726Z",
-      "updatedAt": "2026-09-28T13:32:47.726Z",
+      "createdAt": "2026-09-30T16:45:48.458Z",
+      "updatedAt": "2026-09-30T16:45:48.458Z",
       "twoFactorEnabled": false,
-      "id": "X6BDTskIXusm7iCk1q2OlgNI7QqRyIph"
-    },
-    {
-      "name": "Blessing Runner",
-      "email": "runner@wharunner.co.zw",
-      "emailVerified": false,
-      "createdAt": "2026-09-28T13:32:48.014Z",
-      "updatedAt": "2026-09-28T13:32:48.014Z",
-      "twoFactorEnabled": false,
-      "id": "qmMaRPIXoWWdR0K3QMuPnGHrZj888XvU"
-    },
-    {
-      "name": "Chipo Customer",
-      "email": "customer@wharunner.co.zw",
-      "emailVerified": false,
-      "createdAt": "2026-09-28T13:32:48.287Z",
-      "updatedAt": "2026-09-28T13:32:48.287Z",
-      "twoFactorEnabled": false,
-      "id": "78CWIpFos1MhIRVZbWjkruJa2gL3sfv4"
+      "id": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "role": "admin"
     }
   ],
   "session": [
     {
-      "expiresAt": "2026-10-05T13:32:47.729Z",
-      "token": "UO31UwCbTA9QgwgabUOhB4UBcvOfGP3V",
-      "createdAt": "2026-09-28T13:32:47.729Z",
-      "updatedAt": "2026-09-28T13:32:47.729Z",
+      "expiresAt": "2026-10-07T16:45:48.463Z",
+      "token": "fIZlN0KbRZCX7XESiq7IMmxh8zhIDyiT",
+      "createdAt": "2026-09-30T16:45:48.464Z",
+      "updatedAt": "2026-09-30T16:45:48.464Z",
       "ipAddress": "",
       "userAgent": "",
-      "userId": "X6BDTskIXusm7iCk1q2OlgNI7QqRyIph",
-      "id": "LlOcbV1Wydwiu1SoL5i2pF737xe9F6r2"
-    },
-    {
-      "expiresAt": "2026-10-05T13:32:48.014Z",
-      "token": "Q841rcLobrEHRjbvPvG7v58dwaXDDoUr",
-      "createdAt": "2026-09-28T13:32:48.015Z",
-      "updatedAt": "2026-09-28T13:32:48.015Z",
-      "ipAddress": "",
-      "userAgent": "",
-      "userId": "qmMaRPIXoWWdR0K3QMuPnGHrZj888XvU",
-      "id": "9iTMmLtcPjWzz3g31fdPEGmosJnbeVEQ"
-    },
-    {
-      "expiresAt": "2026-10-05T13:32:48.288Z",
-      "token": "iYIDPdgOg6vJuDk14Pw1stScfj64nvcU",
-      "createdAt": "2026-09-28T13:32:48.288Z",
-      "updatedAt": "2026-09-28T13:32:48.288Z",
-      "ipAddress": "",
-      "userAgent": "",
-      "userId": "78CWIpFos1MhIRVZbWjkruJa2gL3sfv4",
-      "id": "djQF8lqPXpIfUUyNlEDGuULuNrFT5UQr"
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "QODfkugUeaUf5BqIG7UEEnIyn5wI5c4e"
     }
   ],
   "account": [
     {
-      "accountId": "X6BDTskIXusm7iCk1q2OlgNI7QqRyIph",
+      "accountId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
       "providerId": "credential",
-      "userId": "X6BDTskIXusm7iCk1q2OlgNI7QqRyIph",
-      "password": "5f7f7dba497c00d9c6dafc1ab8bfea29:176b166abb1409e6b44c06b2255a42a1dd717e2954beb4b7a04196d07f3bb88636d3a775d7361d5619606a774924386324401fb89f1b20552a018d99896460be",
-      "createdAt": "2026-09-28T13:32:47.728Z",
-      "updatedAt": "2026-09-28T13:32:47.728Z",
-      "id": "JU2Pkg7Y7PHxS9f7UDZEx1Th5OQL2tZx"
-    },
-    {
-      "accountId": "qmMaRPIXoWWdR0K3QMuPnGHrZj888XvU",
-      "providerId": "credential",
-      "userId": "qmMaRPIXoWWdR0K3QMuPnGHrZj888XvU",
-      "password": "fb48cbb785d0bf429442f891ff981766:72bb9e7ecb39a812ce5ccc2c0bc87a37010ab7cedb1d2e3ec229438a0f9e2671d1d028c8870571aab864dac077962f533739b3d7d74bcc3a78d5c4f6092d69d8",
-      "createdAt": "2026-09-28T13:32:48.014Z",
-      "updatedAt": "2026-09-28T13:32:48.014Z",
-      "id": "XdbwCFQWbpYSAcXfSPhNt508dyICoHkS"
-    },
-    {
-      "accountId": "78CWIpFos1MhIRVZbWjkruJa2gL3sfv4",
-      "providerId": "credential",
-      "userId": "78CWIpFos1MhIRVZbWjkruJa2gL3sfv4",
-      "password": "4d1f2e2b6db2ab57ac4c30636e83f960:dbb277433e1465fa12f41f0bcc8ffa6acf9b031a5ea251c780462ce0c3fd76d3e5a0135db5c0a2df8ca5e031b30983b875d754dd763112f9d73d4646b3eaa2e5",
-      "createdAt": "2026-09-28T13:32:48.288Z",
-      "updatedAt": "2026-09-28T13:32:48.288Z",
-      "id": "HEsSdN5Xbi04loGrich8C8O1mnnO9HG0"
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "password": "bc0c5dd903a95a31ade7e75e631a5409:acfacbbad545964850c674a095bd8870e038557f559d5be5d9ae857d8cf1ecd167b7cdce5390fe21e1b820fed7545e133d248eb7545401f04000992836deb947",
+      "createdAt": "2026-09-30T16:45:48.462Z",
+      "updatedAt": "2026-09-30T16:45:48.462Z",
+      "id": "X51s1Mn20bdoqAC8c5fthUCmQZJR8N3t"
     }
   ],
   "verification": [],

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import type { Messenger, TransportMode, ErrandType } from '../types';
 import { RunnerMap } from './RunnerMap';
-import { TRANSPORT_MODE_LABELS, ERRAND_TYPE_LABELS } from '../utils/whatsapp';
+import { TRANSPORT_MODE_LABELS, ERRAND_TYPE_LABELS, buildWhatsAppDeepLink } from '../utils/whatsapp';
 import { ALL_ZIM_LOCATIONS_FILTER } from '../utils/cities';
+import { authClient } from '../lib/auth-client';
 import {
   Star,
   MapPin,
@@ -16,6 +17,7 @@ import {
   ArrowRight,
   Truck,
   CheckCircle2,
+  MessageCircle,
 } from 'lucide-react';
 
 interface BrowseMessengersProps {
@@ -31,6 +33,7 @@ export const BrowseMessengers: React.FC<BrowseMessengersProps> = ({
   onViewProfile,
   isLoading = false,
 }) => {
+  const { data: session } = authClient.useSession();
   const [selectedArea, setSelectedArea] = useState('All Areas');
   const [customAreaText, setCustomAreaText] = useState('');
   const [selectedTransport, setSelectedTransport] = useState<string>('all');
@@ -342,6 +345,18 @@ export const BrowseMessengers: React.FC<BrowseMessengersProps> = ({
                           <span title="Verified Runner">
                             <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
                           </span>
+                          {session?.user?.email &&
+                            messenger.owner_email &&
+                            session.user.email.toLowerCase() === messenger.owner_email.toLowerCase() && (
+                              <span className="px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-black uppercase tracking-tight">
+                                My Profile
+                              </span>
+                            )}
+                          {session?.user?.email === 'comfort.designszw@gmail.com' && (
+                            <span className="px-1.5 py-0.2 rounded-md bg-amber-100 text-amber-800 text-[10px] font-black uppercase tracking-tight">
+                              Admin CRUD
+                            </span>
+                          )}
                         </div>
 
 
@@ -381,20 +396,35 @@ export const BrowseMessengers: React.FC<BrowseMessengersProps> = ({
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="mt-5 pt-3.5 border-t border-slate-100 grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => onViewProfile(messenger)}
-                      className="px-3 py-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-center transition"
+                  <div className="mt-5 pt-3.5 border-t border-slate-100 space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => onViewProfile(messenger)}
+                        className="px-3 py-2 rounded-xl text-slate-700 bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-center transition cursor-pointer"
+                      >
+                        View Profile
+                      </button>
+                      <button
+                        onClick={() => onSelectMessenger(messenger)}
+                        className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold text-center flex items-center justify-center gap-1 shadow-sm transition cursor-pointer"
+                      >
+                        <span>Pick Runner</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <a
+                      href={buildWhatsAppDeepLink(
+                        messenger.whatsapp_number,
+                        `Hi ${messenger.name}, I would like to negotiate errand fees and check your availability for an errand in ${messenger.area_name}.`
+                      )}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full py-2 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100/80 text-emerald-900 border border-emerald-200 text-xs font-bold text-center flex items-center justify-center gap-1.5 transition cursor-pointer"
                     >
-                      View Profile
-                    </button>
-                    <button
-                      onClick={() => onSelectMessenger(messenger)}
-                      className="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-bold text-center flex items-center justify-center gap-1 shadow-sm transition"
-                    >
-                      <span>Pick Runner</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
-                    </button>
+                      <MessageCircle className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Negotiate Fee on WhatsApp</span>
+                    </a>
                   </div>
                 </div>
               );

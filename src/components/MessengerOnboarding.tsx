@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import type { Messenger, TransportMode } from '../types';
 import { TRANSPORT_MODE_LABELS } from '../utils/whatsapp';
 import { compressImage } from '../utils/imageCompressor';
 import { LocationPickerModal } from './LocationPickerModal';
 import { ZIM_MAJOR_CITIES } from '../utils/cities';
+import { authClient } from '../lib/auth-client';
+import { isShadowEmail, shadowEmailToPhone } from '../utils/phoneAuth';
 import {
   ArrowLeft,
   Camera,
@@ -16,6 +18,7 @@ import {
   AlertCircle,
   Clock,
   UploadCloud,
+  User,
 } from 'lucide-react';
 
 interface MessengerOnboardingProps {
@@ -47,6 +50,48 @@ export const MessengerOnboarding: React.FC<MessengerOnboardingProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [pickingLocation, setPickingLocation] = useState(false);
   const [submittedRunner, setSubmittedRunner] = useState<Messenger | null>(null);
+
+  const { data: session } = authClient.useSession();
+
+  // Automatically pre-populate signed-in user's details
+  useEffect(() => {
+    const fetchMe = async () => {
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { 'x-user-email': session?.user?.email || '' },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user) {
+            if (data.user.name) setName(data.user.name);
+            if (data.user.phone) {
+              const clean = data.user.phone.replace(/[^\d+]/g, '');
+              setWhatsapp(clean);
+            }
+            if (data.user.avatar_url && !photoUrl) {
+              setPhotoUrl(data.user.avatar_url);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Pre-populate error:', err);
+      }
+    };
+
+    if (session?.user) {
+      if (session.user.name) {
+        setName(session.user.name);
+      }
+      if (session.user.image) {
+        setPhotoUrl(session.user.image);
+      }
+      if (session.user.email && isShadowEmail(session.user.email)) {
+        const raw = shadowEmailToPhone(session.user.email).replace(/[^\d+]/g, '');
+        setWhatsapp(raw);
+      }
+      fetchMe();
+    }
+  }, [session?.user]);
 
   const isVehicle = transportMode === 'motorbike' || transportMode === 'car';
 
@@ -105,7 +150,10 @@ export const MessengerOnboarding: React.FC<MessengerOnboardingProps> = ({
       setIsSubmitting(true);
       const res = await fetch('/api/messengers', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': session?.user?.email || '',
+        },
         body: JSON.stringify({
           name: name.trim(),
           photo_url:
@@ -122,6 +170,7 @@ export const MessengerOnboarding: React.FC<MessengerOnboardingProps> = ({
           national_id_back: nationalIdBack,
           driver_licence_front: driverLicenceFront || null,
           driver_licence_back: driverLicenceBack || null,
+          owner_email: session?.user?.email || 'comfort.designszw@gmail.com',
         }),
       });
 
@@ -233,6 +282,20 @@ export const MessengerOnboarding: React.FC<MessengerOnboardingProps> = ({
             Create your profile and upload your National ID (and Driver's License if using a vehicle) for admin verification before receiving errand requests.
           </p>
         </div>
+
+        {session?.user && (
+          <div className="p-3 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-xs text-emerald-950 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>
+                Account Linked: <strong>{session.user.name}</strong> ({session.user.email})
+              </span>
+            </div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-white px-2 py-0.5 rounded-md border border-emerald-200">
+              Autofilled
+            </span>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* Profile & Transport Photo */}

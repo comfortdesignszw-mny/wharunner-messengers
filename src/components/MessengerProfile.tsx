@@ -1,54 +1,73 @@
 import React, { useState, useEffect } from 'react';
 import type { Messenger, Rating } from '../types';
-import { TRANSPORT_MODE_LABELS } from '../utils/whatsapp';
+import { TRANSPORT_MODE_LABELS, buildWhatsAppDeepLink } from '../utils/whatsapp';
 import { RunnerMap } from './RunnerMap';
+import { authClient } from '../lib/auth-client';
 import {
   ArrowLeft,
   Star,
   ShieldCheck,
   CheckCircle2,
   MapPin,
-  Calendar,
   MessageCircle,
   ArrowRight,
-  TrendingUp,
+  DollarSign,
+  Edit3,
+  Trash2,
+  AlertCircle,
+  ExternalLink,
+  Lock,
 } from 'lucide-react';
 
 interface MessengerProfileProps {
   messengerId: string;
   onBack: () => void;
   onRequestMessenger: (messenger: Messenger) => void;
+  onProfileUpdated?: () => void;
 }
 
 export const MessengerProfile: React.FC<MessengerProfileProps> = ({
   messengerId,
   onBack,
   onRequestMessenger,
+  onProfileUpdated,
 }) => {
   const [messenger, setMessenger] = useState<(Messenger & { ratings?: Rating[] }) | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editWhatsapp, setEditWhatsapp] = useState('');
+  const [editRadius, setEditRadius] = useState<number>(5.0);
+  const [isSaving, setIsSaving] = useState(false);
+  const [feedbackMsg, setFeedbackMsg] = useState<string | null>(null);
+
+  const { data: session } = authClient.useSession();
+
+  const fetchProfile = async () => {
+    try {
+      const res = await fetch(`/api/messengers/${messengerId}`);
+      if (res.ok) {
+        const data = await res.json();
+        setMessenger(data);
+        setEditName(data.name);
+        setEditWhatsapp(data.whatsapp_number);
+        setEditRadius(data.radius_km);
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const res = await fetch(`/api/messengers/${messengerId}`);
-        if (res.ok) {
-          const data = await res.json();
-          setMessenger(data);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchProfile();
   }, [messengerId]);
 
   if (loading || !messenger) {
     return (
       <div className="py-20 text-center text-sm font-semibold text-slate-500">
-        Loading runner profile...
+        Loading runner details...
       </div>
     );
   }
@@ -59,15 +78,208 @@ export const MessengerProfile: React.FC<MessengerProfileProps> = ({
     tag: 'Courier',
   };
 
+  // REBAC Check: Is current user the profile owner or admin?
+  const currentUserEmail = session?.user?.email?.toLowerCase();
+  const isAdmin = currentUserEmail === 'comfort.designszw@gmail.com';
+  const isOwner = currentUserEmail && messenger.owner_email && (currentUserEmail === messenger.owner_email.toLowerCase());
+  const hasCrudRights = isAdmin || isOwner;
+
+  // Direct WhatsApp negotiation message
+  const negotiationMessage = `Hi ${messenger.name}, I am viewing your verified runner profile on WhaRunner. I would like to negotiate runner fees for an errand around ${messenger.area_name}. Are you available today?`;
+  const whatsappNegotiationUrl = buildWhatsAppDeepLink(messenger.whatsapp_number, negotiationMessage);
+
+  // Handle Owner CRUD Update
+  const handleSaveProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!hasCrudRights) return alert('REBAC Denied: You do not own this runner profile.');
+
+    try {
+      setIsSaving(true);
+      setFeedbackMsg(null);
+      const res = await fetch(`/api/messengers/${messenger.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': session?.user?.email || '',
+        },
+        body: JSON.stringify({
+          name: editName.trim(),
+          whatsapp_number: editWhatsapp.trim(),
+          radius_km: editRadius,
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to update runner profile');
+      }
+
+      setFeedbackMsg('Profile updated successfully!');
+      setIsEditing(false);
+      await fetchProfile();
+      onProfileUpdated?.();
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle Owner Delete/Deactivate
+  const handleDeleteProfile = async () => {
+    if (!hasCrudRights) return alert('REBAC Denied: You do not own this runner profile.');
+    if (!confirm('Are you sure you want to delete this runner account? This action cannot be undone.')) return;
+
+    try {
+      const res = await fetch(`/api/messengers/${messenger.id}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-email': session?.user?.email || '',
+        },
+      });
+
+      if (res.ok) {
+        alert('Runner profile deleted.');
+        onProfileUpdated?.();
+        onBack();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        alert(err.error || 'Failed to delete');
+      }
+    } catch (e: any) {
+      alert(e.message);
+    }
+  };
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <button
-        onClick={onBack}
-        className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white px-3 py-1.5 rounded-xl border border-slate-200 transition"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" />
-        <span>Back to All Runners</span>
-      </button>
+      <div className="flex items-center justify-between">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 bg-white px-3 py-1.5 rounded-xl border border-slate-200 transition cursor-pointer"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span>Back to All Runners</span>
+        </button>
+
+        {/* REBAC Access Badge */}
+        {hasCrudRights ? (
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-100 text-emerald-900 text-xs font-bold border border-emerald-300">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+            <span>{isAdmin ? 'Admin CRUD Mode' : 'Profile Owner (Full CRUD)'}</span>
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200">
+            <Lock className="w-3.5 h-3.5 text-slate-400" />
+            <span>Public Read Mode</span>
+          </span>
+        )}
+      </div>
+
+      {/* REBAC CRUD Toolbar for Owner / Admin */}
+      {hasCrudRights && (
+        <div className="bg-linear-to-r from-emerald-50 to-teal-50 rounded-2xl p-4 border border-emerald-200 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div>
+            <div className="text-xs font-bold text-emerald-950 flex items-center gap-1.5">
+              <ShieldCheck className="w-4 h-4 text-emerald-700" />
+              <span>Relationship-Based Access Control (REBAC)</span>
+            </div>
+            <p className="text-[11px] text-emerald-800 mt-0.5">
+              You have owner authorization to update details, edit operational radius, or remove this runner profile.
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setIsEditing(!isEditing)}
+              className="px-3 py-1.5 rounded-xl bg-white hover:bg-emerald-100/60 border border-emerald-300 text-emerald-900 text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+              <span>{isEditing ? 'Cancel Edit' : 'Edit Profile'}</span>
+            </button>
+            <button
+              onClick={handleDeleteProfile}
+              className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 text-xs font-bold flex items-center gap-1.5 transition cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Form if in editing mode */}
+      {isEditing && (
+        <form onSubmit={handleSaveProfile} className="bg-white rounded-3xl p-6 border-2 border-emerald-500 shadow-md space-y-4 animate-fade-in">
+          <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-2">
+            <Edit3 className="w-4 h-4 text-emerald-600" />
+            <span>Edit Runner Profile (Owner CRUD)</span>
+          </h3>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Display Name</label>
+              <input
+                type="text"
+                required
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">WhatsApp Phone Number</label>
+              <input
+                type="text"
+                required
+                value={editWhatsapp}
+                onChange={(e) => setEditWhatsapp(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-emerald-500 font-mono"
+              />
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between text-xs text-slate-600 mb-1">
+              <span>Coverage Radius:</span>
+              <span className="font-bold text-emerald-700">{editRadius} km</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="25"
+              step="0.5"
+              value={editRadius}
+              onChange={(e) => setEditRadius(parseFloat(e.target.value))}
+              className="w-full accent-emerald-600"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={() => setIsEditing(false)}
+              className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm"
+            >
+              {isSaving ? 'Saving Changes...' : 'Save Profile Changes'}
+            </button>
+          </div>
+        </form>
+      )}
+
+      {feedbackMsg && (
+        <div className="p-3 bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs rounded-xl flex items-center gap-2">
+          <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <span>{feedbackMsg}</span>
+        </div>
+      )}
 
       {/* Hero Card */}
       <div className="bg-white rounded-3xl p-6 md:p-8 border border-slate-200 shadow-sm space-y-6">
@@ -97,7 +309,7 @@ export const MessengerProfile: React.FC<MessengerProfileProps> = ({
 
             <p className="text-xs text-slate-600 flex items-center justify-center sm:justify-start gap-1 mt-1">
               <MapPin className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Base: <strong>{messenger.area_name}</strong> (Coverage: {messenger.radius_km} km radius)</span>
+              <span>Base: <strong>{messenger.area_name}</strong> (Coverage: ~{messenger.radius_km} km radius)</span>
             </p>
           </div>
         </div>
@@ -120,16 +332,33 @@ export const MessengerProfile: React.FC<MessengerProfileProps> = ({
           </div>
         </div>
 
-        {/* CTA Button */}
-        <div className="pt-2">
+        {/* WhatsApp Negotiation & Errand Order Buttons */}
+        <div className="pt-2 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* 1. Direct WhatsApp Negotiation */}
+          <a
+            href={whatsappNegotiationUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="py-3.5 px-4 rounded-2xl bg-[#25D366] hover:bg-[#1EBE5D] text-white font-extrabold text-sm shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 transition cursor-pointer"
+          >
+            <MessageCircle className="w-4 h-4 fill-white" />
+            <span>Negotiate Fee on WhatsApp</span>
+            <ExternalLink className="w-3.5 h-3.5" />
+          </a>
+
+          {/* 2. Order Errand with Runner */}
           <button
             onClick={() => onRequestMessenger(messenger)}
-            className="w-full py-4 px-6 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-base shadow-lg shadow-emerald-600/25 flex items-center justify-center gap-2 transition cursor-pointer"
+            className="py-3.5 px-4 rounded-2xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold text-sm shadow-md shadow-emerald-700/20 flex items-center justify-center gap-2 transition cursor-pointer"
           >
-            <span>Request {messenger.name.split(' ')[0]} on WhatsApp</span>
-            <ArrowRight className="w-5 h-5" />
+            <span>Book & Order Errand</span>
+            <ArrowRight className="w-4 h-4" />
           </button>
         </div>
+
+        <p className="text-[11px] text-center text-slate-500">
+          All orders and negotiations are smoothly handed off to WhatsApp. You can negotiate custom fees and timing directly with {messenger.name}.
+        </p>
       </div>
 
       {/* Coverage Map */}

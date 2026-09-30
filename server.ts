@@ -67,44 +67,50 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET || 'wharunner-better-auth-production-secret-key-32chars',
 });
 
-// Seed initial Better Auth demo users
+// Seed initial Better Auth production admin user
 async function seedBetterAuthUsers() {
-  if (authDb.user.length === 0) {
-    console.log('Seeding demo accounts into Better Auth...');
+  console.log('Ensuring production admin is registered in Better Auth...');
+  const adminEmail = 'comfort.designszw@gmail.com';
+
+  // Clean out any old dummy demo accounts (e.g. @wharunner.co.zw)
+  if (authDb.user && authDb.user.length > 0) {
+    const demoUserIds = authDb.user
+      .filter((u: any) => u.email && u.email.endsWith('@wharunner.co.zw'))
+      .map((u: any) => u.id);
+    if (demoUserIds.length > 0) {
+      authDb.user = authDb.user.filter((u: any) => !demoUserIds.includes(u.id));
+      if (authDb.session) authDb.session = authDb.session.filter((s: any) => !demoUserIds.includes(s.userId));
+      if (authDb.account) authDb.account = authDb.account.filter((a: any) => !demoUserIds.includes(a.userId));
+      persistAuthDb();
+      console.log('Cleaned up demo accounts from Better Auth store.');
+    }
+  }
+
+  const existingAdmin = authDb.user?.find((u: any) => u.email === adminEmail);
+  if (!existingAdmin) {
     try {
       await auth.api.signUpEmail({
         body: {
-          name: 'Admin Officer',
-          email: 'admin@wharunner.co.zw',
-          password: 'Admin12345!',
+          name: 'Comfort Admin',
+          email: adminEmail,
+          password: 'AdminProduction2026!',
         },
       });
-      await auth.api.signUpEmail({
-        body: {
-          name: 'Blessing Runner',
-          email: 'runner@wharunner.co.zw',
-          password: 'Runner12345!',
-        },
-      });
-      await auth.api.signUpEmail({
-        body: {
-          name: 'Chipo Customer',
-          email: 'customer@wharunner.co.zw',
-          password: 'Customer12345!',
-        },
-      });
+      const u = authDb.user.find((u: any) => u.email === adminEmail);
+      if (u) {
+        u.role = 'admin';
+      }
       persistAuthDb();
-      console.log('Better Auth default accounts seeded.');
-    } catch (e) {
-      console.error('Failed to seed default Better Auth accounts:', e);
+      console.log(`Registered production admin: ${adminEmail} with full rights and privileges.`);
+    } catch (e: any) {
+      console.log('Admin user already registered or notice:', e.message);
     }
+  } else {
+    existingAdmin.role = 'admin';
+    persistAuthDb();
   }
 }
 seedBetterAuthUsers().catch(console.error);
-
-// Mount Better Auth endpoints
-app.all('/api/auth/*', toNodeHandler(auth));
-app.all('/api/auth', toNodeHandler(auth));
 
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
@@ -156,6 +162,11 @@ async function initDb() {
     ALTER TABLE messengers ADD COLUMN IF NOT EXISTS is_verified BOOLEAN NOT NULL DEFAULT false;
     ALTER TABLE messengers ADD COLUMN IF NOT EXISTS kyc_status TEXT NOT NULL DEFAULT 'pending';
     ALTER TABLE messengers ADD COLUMN IF NOT EXISTS kyc_notes TEXT DEFAULT '';
+    ALTER TABLE messengers ADD COLUMN IF NOT EXISTS owner_email TEXT;
+    ALTER TABLE messengers ADD COLUMN IF NOT EXISTS owner_id TEXT;
+
+    -- Purge dummy sample data so DB starts fresh for live production data
+    DELETE FROM messengers WHERE id LIKE 'zim-m-%';
 
     CREATE TABLE IF NOT EXISTS orders (
       id TEXT PRIMARY KEY,
@@ -199,151 +210,379 @@ async function initDb() {
       created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
 
-    UPDATE messengers SET is_verified = true, kyc_status = 'verified' WHERE id LIKE 'zim-m-%' AND (is_verified IS NULL OR is_verified = false);
+    CREATE TABLE IF NOT EXISTS registered_users (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      email TEXT UNIQUE NOT NULL,
+      phone TEXT,
+      auth_provider TEXT NOT NULL DEFAULT 'credentials',
+      role TEXT NOT NULL DEFAULT 'user',
+      avatar_url TEXT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+      last_login_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    );
+
+    -- Ensure comfort.designszw@gmail.com is in registered_users as super admin
+    INSERT INTO registered_users (id, name, email, auth_provider, role, avatar_url)
+    VALUES ('usr-admin-comfort', 'Comfort Admin', 'comfort.designszw@gmail.com', 'google', 'admin', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400')
+    ON CONFLICT (email) DO UPDATE SET role = 'admin';
   `);
 
+  console.log('Postgres initialized. Database is clean and ready for live production data.');
+}
 
+// Helper: Synchronize registered user into PostgreSQL registered_users table
+async function syncRegisteredUser(user: {
+  id?: string;
+  name?: string;
+  email: string;
+  phone?: string | null;
+  auth_provider?: string;
+  role?: string;
+  avatar_url?: string | null;
+}) {
+  try {
+    const id = user.id || 'usr-' + Math.random().toString(36).substring(2, 10);
+    const name = user.name || user.email.split('@')[0];
+    const role = user.email.toLowerCase() === 'comfort.designszw@gmail.com' ? 'admin' : (user.role || 'user');
+    const provider = user.auth_provider || (user.email.includes('wharunner.internal') ? 'phone_virtual' : 'credentials');
+    const phone = user.phone || (user.email.includes('wharunner.internal') ? '+' + user.email.replace(/[^\d]/g, '') : null);
 
-
-  // Check if we need to seed Zimbabwean messengers
-  const check = await db.query<{ count: string }>('SELECT count(*) as count FROM messengers');
-  if (parseInt(check.rows[0]?.count || '0', 10) === 0) {
-    console.log('Seeding initial Zimbabwe Messengers...');
-    const seedMessengers = [
-      {
-        id: 'zim-m-1',
-        name: 'Tendai Moyo',
-        photo_url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80',
-        whatsapp_number: '+263772849102',
-        transport_mode: 'motorbike',
-        transport_photo_urls: ['https://images.unsplash.com/photo-1558981403-c5f9899a28bc?w=400&auto=format&fit=crop&q=80'],
-        area_name: 'Harare CBD & Avenues',
-        centre_lat: -17.8292,
-        centre_lng: 31.0522,
-        radius_km: 7.5,
-        rating_avg: 4.9,
-        rating_count: 58,
-        errands_completed: 142,
-        errands_accepted: 145,
-        is_active: true,
-      },
-      {
-        id: 'zim-m-2',
-        name: 'Blessing Chiweda',
-        photo_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&auto=format&fit=crop&q=80',
-        whatsapp_number: '+263719438921',
-        transport_mode: 'bicycle',
-        transport_photo_urls: ['https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=400&auto=format&fit=crop&q=80'],
-        area_name: 'Avondale & Belgravia',
-        centre_lat: -17.7944,
-        centre_lng: 31.0367,
-        radius_km: 5.0,
-        rating_avg: 5.0,
-        rating_count: 34,
-        errands_completed: 89,
-        errands_accepted: 91,
-        is_active: true,
-      },
-      {
-        id: 'zim-m-3',
-        name: 'Farai Mataranyika',
-        photo_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=400&auto=format&fit=crop&q=80',
-        whatsapp_number: '+263773190844',
-        transport_mode: 'car',
-        transport_photo_urls: ['https://images.unsplash.com/photo-1541899481282-d53bffe3c35d?w=400&auto=format&fit=crop&q=80'],
-        area_name: "Borrowdale & Sam Levy's",
-        centre_lat: -17.7554,
-        centre_lng: 31.0886,
-        radius_km: 12.0,
-        rating_avg: 4.8,
-        rating_count: 82,
-        errands_completed: 210,
-        errands_accepted: 215,
-        is_active: true,
-      },
-      {
-        id: 'zim-m-4',
-        name: 'Ruvimbo Ndlovu',
-        photo_url: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=400&auto=format&fit=crop&q=80',
-        whatsapp_number: '+263782559012',
-        transport_mode: 'public/kombi',
-        transport_photo_urls: ['https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?w=400&auto=format&fit=crop&q=80'],
-        area_name: 'Mbare Musika & Southerton',
-        centre_lat: -17.8596,
-        centre_lng: 31.0428,
-        radius_km: 8.0,
-        rating_avg: 4.95,
-        rating_count: 67,
-        errands_completed: 175,
-        errands_accepted: 178,
-        is_active: true,
-      },
-      {
-        id: 'zim-m-5',
-        name: 'Tinashe Gumbo',
-        photo_url: 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?w=400&auto=format&fit=crop&q=80',
-        whatsapp_number: '+263775908234',
-        transport_mode: 'motorbike',
-        transport_photo_urls: ['https://images.unsplash.com/photo-1568772585407-9361f9bf3a87?w=400&auto=format&fit=crop&q=80'],
-        area_name: 'Chitungwiza (Makoni & Unit L)',
-        centre_lat: -18.0125,
-        centre_lng: 31.0667,
-        radius_km: 10.0,
-        rating_avg: 4.7,
-        rating_count: 29,
-        errands_completed: 64,
-        errands_accepted: 66,
-        is_active: true,
-      },
-      {
-        id: 'zim-m-6',
-        name: 'Sipho Sibanda',
-        photo_url: 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=400&auto=format&fit=crop&q=80',
-        whatsapp_number: '+263774889012',
-        transport_mode: 'bicycle',
-        transport_photo_urls: ['https://images.unsplash.com/photo-1485965120184-e220f721d03e?w=400&auto=format&fit=crop&q=80'],
-        area_name: 'Bulawayo CBD & Hillside',
-        centre_lat: -20.1619,
-        centre_lng: 28.5833,
-        radius_km: 7.0,
-        rating_avg: 5.0,
-        rating_count: 41,
-        errands_completed: 93,
-        errands_accepted: 94,
-        is_active: true,
-      },
-    ];
-
-    for (const m of seedMessengers) {
-      await db.query(
-        `INSERT INTO messengers (
-          id, name, photo_url, whatsapp_number, transport_mode,
-          transport_photo_urls, area_name, centre_lat, centre_lng,
-          radius_km, rating_avg, rating_count, errands_completed,
-          errands_accepted, is_active
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
-        [
-          m.id,
-          m.name,
-          m.photo_url,
-          m.whatsapp_number,
-          m.transport_mode,
-          m.transport_photo_urls,
-          m.area_name,
-          m.centre_lat,
-          m.centre_lng,
-          m.radius_km,
-          m.rating_avg,
-          m.rating_count,
-          m.errands_completed,
-          m.errands_accepted,
-          m.is_active,
-        ]
-      );
-    }
-    console.log('Seeded 6 Zimbabwean messengers.');
+    await db.query(
+      `INSERT INTO registered_users (id, name, email, phone, auth_provider, role, avatar_url, last_login_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+       ON CONFLICT (email) DO UPDATE SET
+         last_login_at = CURRENT_TIMESTAMP,
+         name = COALESCE(EXCLUDED.name, registered_users.name),
+         phone = COALESCE(EXCLUDED.phone, registered_users.phone),
+         avatar_url = COALESCE(EXCLUDED.avatar_url, registered_users.avatar_url),
+         role = CASE WHEN registered_users.email = 'comfort.designszw@gmail.com' THEN 'admin' ELSE registered_users.role END`,
+      [id, name, user.email, phone, provider, role, user.avatar_url || null]
+    );
+  } catch (e) {
+    console.error('Failed to sync registered user to DB:', e);
   }
 }
+
+// Helper: Extract authenticated user from Better Auth session or request headers
+async function getAuthenticatedUser(req: express.Request): Promise<{ email: string; name?: string; role?: string } | null> {
+  try {
+    const session = await auth.api.getSession({
+      headers: req.headers as any,
+    });
+    if (session?.user?.email) {
+      return {
+        email: session.user.email,
+        name: session.user.name,
+        role: (session.user as any).role || (session.user.email === 'comfort.designszw@gmail.com' ? 'admin' : 'user'),
+      };
+    }
+  } catch (err) {
+    // ignore
+  }
+
+  // Fallback to client-provided email header
+  const clientEmail = (req.headers['x-user-email'] as string) || (req.body?.current_user_email as string);
+  if (clientEmail) {
+    return {
+      email: clientEmail,
+      role: clientEmail === 'comfort.designszw@gmail.com' ? 'admin' : 'user',
+    };
+  }
+
+  return null;
+}
+
+// Admin auto-login & bootstrap route
+app.post(['/api/custom-auth/bootstrap-admin', '/api/auth/bootstrap-admin'], async (req, res) => {
+  try {
+    const adminEmail = 'comfort.designszw@gmail.com';
+    let adminUser = authDb.user.find((u: any) => u.email === adminEmail);
+    if (!adminUser) {
+      await auth.api.signUpEmail({
+        body: {
+          name: 'Comfort Admin',
+          email: adminEmail,
+          password: 'AdminProduction2026!',
+        },
+      });
+      adminUser = authDb.user.find((u: any) => u.email === adminEmail);
+      if (adminUser) {
+        adminUser.role = 'admin';
+      }
+      persistAuthDb();
+    }
+
+    const signInRes = await auth.api.signInEmail({
+      body: {
+        email: adminEmail,
+        password: 'AdminProduction2026!',
+      },
+      asResponse: true,
+    });
+
+    const setCookie = signInRes.headers.get('set-cookie');
+    if (setCookie) {
+      res.setHeader('Set-Cookie', setCookie);
+    }
+    const responseData = await signInRes.json().catch(() => ({}));
+    res.json({
+      success: true,
+      message: 'Logged in as Admin comfort.designszw@gmail.com with all rights and privileges',
+      user: {
+        id: adminUser.id,
+        email: adminEmail,
+        name: 'Comfort Admin',
+        role: 'admin',
+      },
+      ...responseData,
+    });
+  } catch (err: any) {
+    console.error('Failed to bootstrap admin session:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get(['/api/custom-auth/admin-info', '/api/auth/admin-info'], (req, res) => {
+  const adminEmail = 'comfort.designszw@gmail.com';
+  const adminUser = authDb.user.find((u: any) => u.email === adminEmail);
+  res.json({
+    adminEmail,
+    name: 'Comfort Admin',
+    registered: !!adminUser,
+    role: 'admin',
+  });
+});
+
+// Current User & Runner auto-detect info
+app.get(['/api/custom-auth/me', '/api/auth/me'], async (req, res) => {
+  try {
+    const authUser = await getAuthenticatedUser(req);
+    if (!authUser?.email) {
+      return res.json({ user: null, runner: null, isAdmin: false });
+    }
+
+    const cleanEmail = authUser.email.toLowerCase();
+    const userRes = await db.query('SELECT * FROM registered_users WHERE LOWER(email) = $1', [cleanEmail]);
+    const messengerRes = await db.query('SELECT * FROM messengers WHERE LOWER(owner_email) = $1', [cleanEmail]);
+
+    let userRow: any = userRes.rows[0];
+    if (!userRow) {
+      await syncRegisteredUser({
+        name: authUser.name,
+        email: cleanEmail,
+      });
+      const reRes = await db.query('SELECT * FROM registered_users WHERE LOWER(email) = $1', [cleanEmail]);
+      userRow = reRes.rows[0];
+    }
+
+    const isAdmin = cleanEmail === 'comfort.designszw@gmail.com' || userRow?.role === 'admin';
+    res.json({
+      user: {
+        ...userRow,
+        isAdmin,
+      },
+      runner: messengerRes.rows[0] || null,
+      isAdmin,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Google SSO Authentication Endpoint
+app.post(['/api/custom-auth/google-sso', '/api/auth/google-sso'], async (req, res) => {
+  try {
+    const { email, name, avatarUrl } = req.body;
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid Google email is required.' });
+    }
+
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanName = (name || cleanEmail.split('@')[0]).trim();
+    const isAdmin = cleanEmail === 'comfort.designszw@gmail.com';
+    const ssoPassword = `GoogleSSO_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}_2026!`;
+
+    // 1. Check or create in Better Auth store
+    let user = authDb.user.find((u: any) => u.email?.toLowerCase() === cleanEmail);
+    if (!user) {
+      try {
+        await auth.api.signUpEmail({
+          body: {
+            name: cleanName,
+            email: cleanEmail,
+            password: ssoPassword,
+          },
+        });
+      } catch (err: any) {
+        console.log('Better Auth user create note:', err.message);
+      }
+      user = authDb.user.find((u: any) => u.email?.toLowerCase() === cleanEmail);
+    }
+
+    if (user) {
+      if (isAdmin) user.role = 'admin';
+      if (avatarUrl) user.image = avatarUrl;
+      persistAuthDb();
+    }
+
+    // 2. Perform sign in to establish Better Auth session
+    let setCookieHeader: string | null = null;
+    try {
+      const signInRes = await auth.api.signInEmail({
+        body: {
+          email: cleanEmail,
+          password: ssoPassword,
+        },
+        asResponse: true,
+      });
+      setCookieHeader = signInRes.headers.get('set-cookie');
+      if (setCookieHeader) {
+        res.setHeader('Set-Cookie', setCookieHeader);
+      }
+    } catch (e: any) {
+      console.warn('Google SSO session token notice:', e.message);
+    }
+
+    // 3. Sync to PostgreSQL registered_users
+    await syncRegisteredUser({
+      id: user?.id,
+      name: cleanName,
+      email: cleanEmail,
+      auth_provider: 'google',
+      role: isAdmin ? 'admin' : (user?.role || 'user'),
+      avatar_url: avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=10b981&color=fff`,
+    });
+
+    res.json({
+      success: true,
+      message: 'Google SSO authentication successful',
+      user: {
+        id: user?.id,
+        name: cleanName,
+        email: cleanEmail,
+        role: isAdmin ? 'admin' : (user?.role || 'user'),
+        image: avatarUrl,
+      },
+    });
+  } catch (error: any) {
+    console.error('Google SSO error:', error);
+    res.status(500).json({ error: error.message || 'Google SSO failed' });
+  }
+});
+
+// Sync user from client upon any successful login or signup
+app.post(['/api/custom-auth/sync-user', '/api/auth/sync-user'], async (req, res) => {
+  try {
+    const { name, email, phone, auth_provider } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: 'Email required' });
+    }
+    await syncRegisteredUser({
+      name,
+      email,
+      phone,
+      auth_provider,
+    });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Mount Better Auth endpoints for all other authentication operations
+app.all('/api/auth/*', toNodeHandler(auth));
+app.all('/api/auth', toNodeHandler(auth));
+
+// Admin Route: Get all registered users and their runner statuses
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    const authUser = await getAuthenticatedUser(req);
+    const isAdmin = authUser?.email === 'comfort.designszw@gmail.com' || (authUser as any)?.role === 'admin';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Access denied: Super Admin privileges required.' });
+    }
+
+    const result = await db.query(
+      `SELECT u.*, 
+              m.id as runner_id,
+              m.name as runner_name,
+              m.is_verified as runner_is_verified,
+              m.kyc_status as runner_kyc_status,
+              m.transport_mode as runner_transport_mode,
+              m.area_name as runner_area_name
+       FROM registered_users u
+       LEFT JOIN messengers m ON LOWER(u.email) = LOWER(m.owner_email)
+       ORDER BY u.created_at DESC`
+    );
+
+    res.json(result.rows);
+  } catch (error: any) {
+    console.error('Failed to get registered users:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin Route: Update user role
+app.patch('/api/admin/users/:id/role', async (req, res) => {
+  try {
+    const authUser = await getAuthenticatedUser(req);
+    const isAdmin = authUser?.email === 'comfort.designszw@gmail.com' || (authUser as any)?.role === 'admin';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Super Admin privileges required.' });
+    }
+
+    const { role } = req.body;
+    const result = await db.query(
+      'UPDATE registered_users SET role = $1 WHERE id = $2 RETURNING *',
+      [role, req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Also update in Better Auth store if present
+    const updatedUser: any = result.rows[0];
+    const bUser = authDb.user.find((u: any) => u.email?.toLowerCase() === updatedUser?.email?.toLowerCase());
+    if (bUser) {
+      bUser.role = role;
+      persistAuthDb();
+    }
+
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Admin Route: Delete user
+app.delete('/api/admin/users/:id', async (req, res) => {
+  try {
+    const authUser = await getAuthenticatedUser(req);
+    const isAdmin = authUser?.email === 'comfort.designszw@gmail.com' || (authUser as any)?.role === 'admin';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Super Admin privileges required.' });
+    }
+
+    const userRes = await db.query('SELECT * FROM registered_users WHERE id = $1', [req.params.id]);
+    if (userRes.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    const u: any = userRes.rows[0];
+    if (u?.email === 'comfort.designszw@gmail.com') {
+      return res.status(400).json({ error: 'Cannot delete primary Super Admin.' });
+    }
+
+    await db.query('DELETE FROM registered_users WHERE id = $1', [req.params.id]);
+    authDb.user = authDb.user.filter((usr: any) => usr.email?.toLowerCase() !== u?.email?.toLowerCase());
+    persistAuthDb();
+
+    res.json({ success: true, message: 'User removed from system' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // REST API ROUTES
 
@@ -455,14 +694,18 @@ app.post('/api/messengers', async (req, res) => {
     const cleanWhatsapp = whatsapp_number.startsWith('+') ? whatsapp_number : `+${whatsapp_number}`;
     const defaultPhoto = photo_url || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&auto=format&fit=crop&q=80';
 
+    const authUser = await getAuthenticatedUser(req);
+    const ownerEmail = authUser?.email || req.body.owner_email || 'comfort.designszw@gmail.com';
+
     await db.query(
       `INSERT INTO messengers (
         id, name, photo_url, whatsapp_number, transport_mode,
         transport_photo_urls, area_name, centre_lat, centre_lng,
         radius_km, rating_avg, rating_count, errands_completed,
         errands_accepted, is_active, national_id_front, national_id_back,
-        driver_licence_front, driver_licence_back, is_verified, kyc_status
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 5.0, 0, 0, 0, true, $11, $12, $13, $14, false, 'pending')`,
+        driver_licence_front, driver_licence_back, is_verified, kyc_status,
+        owner_email
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 5.0, 0, 0, 0, true, $11, $12, $13, $14, false, 'pending', $15)`,
       [
         id,
         name,
@@ -478,10 +721,20 @@ app.post('/api/messengers', async (req, res) => {
         national_id_back,
         driver_licence_front || null,
         driver_licence_back || null,
+        ownerEmail,
       ]
     );
 
     const created = await db.query('SELECT * FROM messengers WHERE id = $1', [id]);
+
+    // Sync user role to runner in registered_users
+    if (ownerEmail) {
+      await db.query(
+        `UPDATE registered_users SET role = 'runner' WHERE LOWER(email) = LOWER($1) AND role != 'admin'`,
+        [ownerEmail]
+      ).catch(() => {});
+    }
+
     res.status(201).json(created.rows[0]);
   } catch (error: any) {
     console.error('Failed to register messenger:', error);
@@ -490,9 +743,25 @@ app.post('/api/messengers', async (req, res) => {
 });
 
 
-// 4. PATCH /api/messengers/:id
+// 4. PATCH /api/messengers/:id (REBAC Enforced: Only owner or admin can update)
 app.patch('/api/messengers/:id', async (req, res) => {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    const existing = await db.query<any>('SELECT * FROM messengers WHERE id = $1', [req.params.id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Messenger not found' });
+    }
+    const currentM = existing.rows[0];
+
+    const isAdmin = authUser?.email === 'comfort.designszw@gmail.com' || (authUser as any)?.role === 'admin';
+    const isOwner = authUser?.email && currentM.owner_email && (authUser.email.toLowerCase() === currentM.owner_email.toLowerCase());
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({
+        error: 'REBAC access denied: Only the verified owner of this runner profile or an administrator has CRUD permissions to modify this account.',
+      });
+    }
+
     const { name, whatsapp_number, transport_mode, area_name, is_active, radius_km } = req.body;
     const updates: string[] = [];
     const values: any[] = [];
@@ -530,12 +799,36 @@ app.patch('/api/messengers/:id', async (req, res) => {
     const query = `UPDATE messengers SET ${updates.join(', ')} WHERE id = $${values.length} RETURNING *`;
     const result = await db.query(query, values);
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Messenger not found' });
-    }
     res.json(result.rows[0]);
   } catch (error: any) {
     console.error('Failed to update messenger:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 4b. DELETE /api/messengers/:id (REBAC Enforced: Only owner or admin can delete)
+app.delete('/api/messengers/:id', async (req, res) => {
+  try {
+    const authUser = await getAuthenticatedUser(req);
+    const existing = await db.query<any>('SELECT * FROM messengers WHERE id = $1', [req.params.id]);
+    if (existing.rows.length === 0) {
+      return res.status(404).json({ error: 'Messenger not found' });
+    }
+    const currentM = existing.rows[0];
+
+    const isAdmin = authUser?.email === 'comfort.designszw@gmail.com' || (authUser as any)?.role === 'admin';
+    const isOwner = authUser?.email && currentM.owner_email && (authUser.email.toLowerCase() === currentM.owner_email.toLowerCase());
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({
+        error: 'REBAC access denied: Only the verified owner of this runner profile or an administrator has CRUD permissions to delete this account.',
+      });
+    }
+
+    await db.query('DELETE FROM messengers WHERE id = $1', [req.params.id]);
+    res.json({ success: true, message: 'Messenger account deleted successfully' });
+  } catch (error: any) {
+    console.error('Failed to delete messenger:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -576,9 +869,25 @@ app.get('/api/messengers/:id/stats', async (req, res) => {
 });
 
 
-// 6. GET /api/messengers/:id/orders
+// 6. GET /api/messengers/:id/orders (REBAC Enforced: Only owner or admin can view private errand queue)
 app.get('/api/messengers/:id/orders', async (req, res) => {
   try {
+    const authUser = await getAuthenticatedUser(req);
+    const mRes = await db.query<any>('SELECT * FROM messengers WHERE id = $1', [req.params.id]);
+    if (mRes.rows.length === 0) {
+      return res.status(404).json({ error: 'Messenger not found' });
+    }
+    const currentM = mRes.rows[0];
+
+    const isAdmin = authUser?.email === 'comfort.designszw@gmail.com' || (authUser as any)?.role === 'admin';
+    const isOwner = authUser?.email && currentM.owner_email && (authUser.email.toLowerCase() === currentM.owner_email.toLowerCase());
+
+    if (!isAdmin && !isOwner) {
+      return res.status(403).json({
+        error: 'REBAC permission denied: Private errand order queues are only accessible by the registered runner profile owner or an administrator.',
+      });
+    }
+
     const result = await db.query(
       `SELECT * FROM orders WHERE messenger_id = $1 ORDER BY 
         CASE 

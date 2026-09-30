@@ -382,6 +382,26 @@ export const OrderStatusPage: React.FC<OrderStatusPageProps> = ({
               </button>
             </div>
           </form>
+
+          {/* Direct WhatsApp Negotiation Handoff */}
+          {order.messenger_whatsapp && (
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs text-slate-500">Prefer negotiating directly in chat?</span>
+              <a
+                href={buildWhatsAppDeepLink(
+                  order.messenger_whatsapp,
+                  `Hi ${order.messenger_name || 'Runner'}, regarding errand #${order.id.slice(-6)}, I would like to negotiate the errand fee on WhatsApp. Current counter is $${(order.counter_charge || order.proposed_charge).toFixed(2)}.`
+                )}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#25D366] hover:bg-[#1EBE5D] text-white text-xs font-bold shadow-xs transition"
+              >
+                <MessageCircle className="w-3.5 h-3.5 fill-white" />
+                <span>Negotiate on WhatsApp</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            </div>
+          )}
         </div>
       )}
 

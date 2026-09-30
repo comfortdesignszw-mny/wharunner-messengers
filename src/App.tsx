@@ -25,6 +25,7 @@ import {
   MapPin,
   KeyRound,
   User,
+  CheckCircle2,
 } from 'lucide-react';
 
 
@@ -56,6 +57,10 @@ export default function App() {
 
   // Better Auth modal
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // New user runner creation prompt modal
+  const [showNewUserRunnerPrompt, setShowNewUserRunnerPrompt] = useState(false);
+  const [registeredUserName, setRegisteredUserName] = useState('');
 
 
   // Load messengers (online fetch + fallback to Dexie cache)
@@ -90,6 +95,23 @@ export default function App() {
 
   useEffect(() => {
     loadMessengers().finally(() => setIsLoadingMessengers(false));
+
+    // Automatically log in comfort.designszw@gmail.com as the initial production admin
+    const autoLoginAdmin = async () => {
+      try {
+        const sessionCheck = await authClient.getSession();
+        if (!sessionCheck?.data?.user) {
+          await fetch('/api/custom-auth/bootstrap-admin', { method: 'POST' });
+          await authClient.signIn.email({
+            email: 'comfort.designszw@gmail.com',
+            password: 'AdminProduction2026!',
+          });
+        }
+      } catch (err) {
+        console.warn('Auto admin bootstrap notice:', err);
+      }
+    };
+    autoLoginAdmin();
 
     // Check if URL has ?order_id=...
     const urlParams = new URLSearchParams(window.location.search);
@@ -159,23 +181,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Quick Header Actions: Better Auth User Pill + My Errands + PWA */}
+          {/* Quick Header Actions: My Errands + PWA + Better Auth Button in Top Right Corner */}
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowAuthModal(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:border-emerald-500 bg-white text-xs font-semibold text-slate-700 shadow-xs transition"
-              title="Better Auth Account & Session"
-            >
-              <KeyRound className="w-3.5 h-3.5 text-emerald-600" />
-              {session?.user ? (
-                <span className="text-emerald-800 font-bold truncate max-w-[100px]">
-                  {session.user.name?.split(' ')[0]}
-                </span>
-              ) : (
-                <span className="hidden sm:inline">Sign In</span>
-              )}
-            </button>
-
             <button
               onClick={() => setShowMyOrdersModal(true)}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition"
@@ -186,6 +193,35 @@ export default function App() {
             </button>
 
             <PWAInstallButton compact={true} />
+
+            {/* Top Right Corner: Better Auth Button */}
+            <button
+              onClick={() => setShowAuthModal(true)}
+              className="flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl border border-slate-200 hover:border-emerald-500 bg-white text-xs font-bold text-slate-800 shadow-xs hover:shadow-sm transition cursor-pointer"
+              title="Better Auth Account & Session"
+            >
+              {session?.user ? (
+                <>
+                  <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[11px] font-black">
+                    {session.user.name?.charAt(0).toUpperCase() || 'U'}
+                  </div>
+                  <div className="flex flex-col text-left">
+                    <span className="text-slate-900 font-extrabold truncate max-w-[90px] sm:max-w-[120px] leading-tight">
+                      {session.user.name?.split(' ')[0]}
+                    </span>
+                    <span className="text-[10px] text-emerald-700 font-bold leading-tight flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Active
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <KeyRound className="w-4 h-4 text-emerald-600" />
+                  <span className="font-bold text-slate-800">Sign In</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </header>
@@ -245,13 +281,15 @@ export default function App() {
           />
         )}
 
-        {/* Screen 6: Messenger Dashboard */}
-        {currentView === 'messenger-dashboard' && activeMessengerForDashboard && (
+        {/* Screen 6: Messenger Dashboard & Integrated Admin Console */}
+        {currentView === 'messenger-dashboard' && (
           <MessengerDashboard
-            currentMessenger={activeMessengerForDashboard}
+            currentMessenger={activeMessengerForDashboard || messengers[0] || null}
             allMessengers={messengers}
             onSwitchMessenger={(m) => setActiveMessengerForDashboard(m)}
             onViewPublicProfile={handleViewProfile}
+            onGoToOnboarding={() => setCurrentView('onboarding')}
+            onRefreshMessengers={loadMessengers}
           />
         )}
 
@@ -261,14 +299,7 @@ export default function App() {
             messengerId={selectedMessenger.id}
             onBack={() => setCurrentView('browse')}
             onRequestMessenger={handleSelectMessenger}
-          />
-        )}
-
-        {/* Screen 8: Admin Dashboard */}
-        {currentView === 'admin' && (
-          <AdminDashboard
-            messengers={messengers}
-            onRefreshMessengers={loadMessengers}
+            onProfileUpdated={loadMessengers}
           />
         )}
       </main>
@@ -289,24 +320,76 @@ export default function App() {
       <AuthModal
         isOpen={showAuthModal}
         onClose={() => setShowAuthModal(false)}
-        onAuthSuccess={() => {
+        onAuthSuccess={(details) => {
           loadMessengers();
+          if (details?.isNewUser) {
+            setRegisteredUserName(details.user?.name || 'Friend');
+            setCurrentView('browse');
+            setShowNewUserRunnerPrompt(true);
+          }
         }}
       />
 
-      {/* Floating Bottom Navigation Bar with Glassmorphism */}
+      {/* New User Encouragement Popup: Prompt to create Runner Profile */}
+      {showNewUserRunnerPrompt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-md animate-fade-in">
+          <div className="relative w-full max-w-md bg-white rounded-3xl p-6 sm:p-7 border border-slate-200 shadow-2xl space-y-4 text-center">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-100 text-emerald-800 mx-auto flex items-center justify-center shadow-xs">
+              <Bike className="w-7 h-7 text-emerald-600" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-lg font-black text-slate-900">
+                Welcome to WhaRunner, {registeredUserName || 'Runner'}! 🎉
+              </h3>
+              <p className="text-xs text-slate-600 leading-relaxed">
+                Your account is ready! Would you like to earn by offering errands or deliveries across Zimbabwe?
+              </p>
+            </div>
+
+            <div className="p-3.5 bg-emerald-50 rounded-2xl border border-emerald-200 text-left text-xs text-emerald-950 space-y-1">
+              <div className="font-bold flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Get verified & start receiving orders</span>
+              </div>
+              <p className="text-[11px] text-emerald-800">
+                Complete your runner profile in the <strong>+Register</strong> section. Your signed-in info will be auto-populated!
+              </p>
+            </div>
+
+            <div className="pt-2 flex flex-col sm:flex-row gap-2">
+              <button
+                onClick={() => {
+                  setShowNewUserRunnerPrompt(false);
+                  setCurrentView('onboarding');
+                }}
+                className="flex-1 py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs shadow-md shadow-emerald-600/20 transition cursor-pointer"
+              >
+                + Create Runner Profile
+              </button>
+              <button
+                onClick={() => setShowNewUserRunnerPrompt(false)}
+                className="py-3 px-4 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition cursor-pointer"
+              >
+                Browse Runners First
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating Bottom Navigation Bar - Pure Light Theme */}
       <div className="fixed bottom-4 sm:bottom-6 inset-x-0 z-50 flex justify-center pointer-events-none px-3">
-        <nav className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 p-1.5 sm:p-2 rounded-full bg-white/80 dark:bg-slate-900/85 backdrop-blur-2xl border border-white/60 dark:border-white/10 shadow-[0_12px_36px_rgba(0,0,0,0.16)] ring-1 ring-slate-900/5 transition-all">
+        <nav className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 p-1.5 sm:p-2 rounded-full bg-white/95 backdrop-blur-2xl border border-slate-200/90 shadow-[0_12px_36px_rgba(0,0,0,0.08)] ring-1 ring-slate-200/60 transition-all">
           {/* 1. Find Runners */}
           <button
             onClick={() => {
               setCurrentView('browse');
               window.history.pushState({}, '', window.location.pathname);
             }}
-            className={`px-3 sm:px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               currentView === 'browse'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
             }`}
           >
             <MapPin className="w-4 h-4 shrink-0" />
@@ -321,10 +404,10 @@ export default function App() {
               }
               setCurrentView(selectedMessenger || messengers[0] ? 'request' : 'browse');
             }}
-            className={`px-3 sm:px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               currentView === 'request' || currentView === 'preview'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
             }`}
           >
             <Package className="w-4 h-4 shrink-0" />
@@ -339,10 +422,10 @@ export default function App() {
               }
               setCurrentView('messenger-dashboard');
             }}
-            className={`px-3 sm:px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               currentView === 'messenger-dashboard'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
             }`}
           >
             <Bike className="w-4 h-4 shrink-0" />
@@ -352,40 +435,14 @@ export default function App() {
           {/* 4. Join as Runner */}
           <button
             onClick={() => setCurrentView('onboarding')}
-            className={`px-3 sm:px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 ${
+            className={`px-3.5 sm:px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
               currentView === 'onboarding'
                 ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
+                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80'
             }`}
           >
             <UserPlus className="w-4 h-4 shrink-0" />
             <span className="hidden sm:inline">Register</span>
-          </button>
-
-          {/* 5. Admin Desk */}
-          <button
-            onClick={() => setCurrentView('admin')}
-            className={`px-3 sm:px-4 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 ${
-              currentView === 'admin'
-                ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30'
-                : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4 shrink-0" />
-            <span className="hidden sm:inline">Admin</span>
-          </button>
-
-          {/* Small Divider */}
-          <div className="w-[1px] h-5 bg-slate-300/70 mx-0.5" />
-
-          {/* 6. Better Auth Profile / Sign In */}
-          <button
-            onClick={() => setShowAuthModal(true)}
-            className="px-3 sm:px-3.5 py-2 rounded-full text-xs font-bold transition flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white shadow-xs"
-            title="Better Auth Account & Security"
-          >
-            <KeyRound className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>{session?.user ? session.user.name?.split(' ')[0] : 'Auth'}</span>
           </button>
         </nav>
       </div>
