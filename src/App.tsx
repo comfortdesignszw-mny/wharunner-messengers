@@ -26,12 +26,26 @@ import {
   KeyRound,
   User,
   CheckCircle2,
+  ChevronDown,
+  LogOut,
 } from 'lucide-react';
 
 
 export default function App() {
   const isOnline = useOnlineStatus();
   const { data: session } = authClient.useSession();
+
+  // Cached user profile for instantaneous, zero-flicker UI and offline persistence
+  const [cachedUser, setCachedUser] = useState<any>(() => {
+    try {
+      const raw = localStorage.getItem('wharunner_auth_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const currentUser = session?.user || cachedUser;
 
   // Navigation states: 'browse' | 'request' | 'preview' | 'status' | 'profile' | 'messenger-dashboard' | 'onboarding' | 'admin'
   const [currentView, setCurrentView] = useState<string>('browse');
@@ -57,11 +71,22 @@ export default function App() {
 
   // Better Auth modal
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    return localStorage.getItem('wharunner_user_is_admin') === 'true';
+  });
 
   // New user runner creation prompt modal
   const [showNewUserRunnerPrompt, setShowNewUserRunnerPrompt] = useState(false);
   const [registeredUserName, setRegisteredUserName] = useState('');
 
+  // Synchronize session user with local cache
+  useEffect(() => {
+    if (session?.user) {
+      setCachedUser(session.user);
+      localStorage.setItem('wharunner_auth_user', JSON.stringify(session.user));
+    }
+  }, [session?.user]);
 
   // Load messengers (online fetch + fallback to Dexie cache)
   const loadMessengers = async () => {
@@ -96,23 +121,6 @@ export default function App() {
   useEffect(() => {
     loadMessengers().finally(() => setIsLoadingMessengers(false));
 
-    // Automatically log in comfort.designszw@gmail.com as the initial production admin
-    const autoLoginAdmin = async () => {
-      try {
-        const sessionCheck = await authClient.getSession();
-        if (!sessionCheck?.data?.user) {
-          await fetch('/api/custom-auth/bootstrap-admin', { method: 'POST' });
-          await authClient.signIn.email({
-            email: 'comfort.designszw@gmail.com',
-            password: 'AdminProduction2026!',
-          });
-        }
-      } catch (err) {
-        console.warn('Auto admin bootstrap notice:', err);
-      }
-    };
-    autoLoginAdmin();
-
     // Check if URL has ?order_id=...
     const urlParams = new URLSearchParams(window.location.search);
     const orderIdParam = urlParams.get('order_id');
@@ -121,6 +129,41 @@ export default function App() {
       setCurrentView('status');
     }
   }, [isOnline]);
+
+  useEffect(() => {
+    const syncAdminStatus = async () => {
+      const user = session?.user || cachedUser;
+      const email = user?.email?.toLowerCase();
+      if (!user) {
+        setIsAdmin(false);
+        localStorage.removeItem('wharunner_user_is_admin');
+        return;
+      }
+
+      if (email === 'comfort.designszw@gmail.com') {
+        setIsAdmin(true);
+        localStorage.setItem('wharunner_user_is_admin', 'true');
+        return;
+      }
+
+      try {
+        const res = await fetch('/api/auth/me', {
+          headers: { 'x-user-email': user.email || '' },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const admin = Boolean(
+            data?.isAdmin ||
+            data?.user?.role === 'admin' ||
+            email === 'comfort.designszw@gmail.com'
+          );
+          setIsAdmin(admin);
+          localStorage.setItem('wharunner_user_is_admin', admin ? 'true' : 'false');
+        }
+      } catch (e) {}
+    };
+    syncAdminStatus();
+  }, [session?.user, cachedUser]);
 
   // Handle Messenger selection for errand
   const handleSelectMessenger = (m: Messenger) => {
@@ -194,34 +237,181 @@ export default function App() {
 
             <PWAInstallButton compact={true} />
 
-            {/* Top Right Corner: Better Auth Button */}
-            <button
-              onClick={() => setShowAuthModal(true)}
-              className="flex items-center gap-2 px-3 sm:px-3.5 py-1.5 rounded-xl border border-slate-200 hover:border-emerald-500 bg-white text-xs font-bold text-slate-800 shadow-xs hover:shadow-sm transition cursor-pointer"
-              title="Better Auth Account & Session"
-            >
-              {session?.user ? (
-                <>
-                  <div className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-[11px] font-black">
-                    {session.user.name?.charAt(0).toUpperCase() || 'U'}
+            {/* Admin Desk Quick Access for Comfort Admin */}
+            {isAdmin && (
+              <button
+                onClick={() => setCurrentView('admin')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition shadow-xs cursor-pointer ${
+                  currentView === 'admin'
+                    ? 'bg-amber-500 text-white shadow-amber-500/20'
+                    : 'bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300'
+                }`}
+                title="Admin Dashboard & KYC Desk"
+              >
+                <span>👑</span>
+                <span className="hidden sm:inline">Admin Desk</span>
+              </button>
+            )}
+
+            {/* Authenticated User: Sign In button disappears, authenticated user's profile avatar is displayed! */}
+            {currentUser ? (
+              <div className="relative">
+                <button
+                  onClick={() => setShowUserMenu((prev) => !prev)}
+                  className="flex items-center gap-2 p-1 pl-1.5 pr-2.5 rounded-full border border-slate-200 hover:border-emerald-500 bg-white hover:bg-slate-50 transition shadow-xs cursor-pointer select-none group"
+                  title="Account Profile & Options"
+                >
+                  <div className="relative">
+                    {currentUser.image ? (
+                      <img
+                        src={currentUser.image}
+                        alt={currentUser.name || 'User'}
+                        className="w-8 h-8 rounded-full object-cover border border-emerald-500 shadow-2xs"
+                      />
+                    ) : (
+                      <div className="w-8 h-8 rounded-full bg-linear-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center text-xs font-black shadow-2xs">
+                        {currentUser.name?.charAt(0).toUpperCase() || 'U'}
+                      </div>
+                    )}
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border-2 border-white ring-1 ring-emerald-600/30" />
                   </div>
-                  <div className="flex flex-col text-left">
-                    <span className="text-slate-900 font-extrabold truncate max-w-[90px] sm:max-w-[120px] leading-tight">
-                      {session.user.name?.split(' ')[0]}
-                    </span>
-                    <span className="text-[10px] text-emerald-700 font-bold leading-tight flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Active
-                    </span>
+
+                  <span className="text-xs font-extrabold text-slate-800 max-w-[85px] sm:max-w-[120px] truncate leading-tight">
+                    {currentUser.name?.split(' ')[0]}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700 transition" />
+                </button>
+
+                {/* Popover / Dropdown Menu */}
+                {showUserMenu && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-xl border border-slate-200 py-2 z-50 animate-fade-in text-xs">
+                    <div className="px-4 py-2.5 border-b border-slate-100 flex items-center gap-3">
+                      {currentUser.image ? (
+                        <img
+                          src={currentUser.image}
+                          alt={currentUser.name || 'User'}
+                          className="w-10 h-10 rounded-full object-cover border border-emerald-500"
+                        />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-linear-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center text-sm font-black">
+                          {currentUser.name?.charAt(0).toUpperCase() || 'U'}
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="font-extrabold text-slate-900 truncate">
+                          {currentUser.name}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate">
+                          {currentUser.email}
+                        </div>
+                        <div className="mt-1">
+                          {isAdmin ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 text-amber-900 text-[10px] font-black uppercase">
+                              👑 Super Admin
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                              Active Member
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="py-1">
+                      {isAdmin && (
+                        <button
+                          onClick={() => {
+                            setCurrentView('admin');
+                            setShowUserMenu(false);
+                          }}
+                          className="w-full text-left px-4 py-2 hover:bg-amber-50 text-amber-950 font-bold flex items-center gap-2 transition cursor-pointer"
+                        >
+                          <span className="text-sm">👑</span>
+                          <span>Admin Console & KYC Desk</span>
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => {
+                          setCurrentView('messenger-dashboard');
+                          setShowUserMenu(false);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 font-semibold flex items-center gap-2 transition cursor-pointer"
+                      >
+                        <Bike className="w-4 h-4 text-emerald-600" />
+                        <span>Runner Hub & Deliveries</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setCurrentView('onboarding');
+                          setShowUserMenu(false);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 font-semibold flex items-center gap-2 transition cursor-pointer"
+                      >
+                        <UserPlus className="w-4 h-4 text-emerald-600" />
+                        <span>+ Register as Runner</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowMyOrdersModal(true);
+                          setShowUserMenu(false);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 font-semibold flex items-center gap-2 transition cursor-pointer"
+                      >
+                        <Package className="w-4 h-4 text-emerald-600" />
+                        <span>My Saved Errands</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setShowAuthModal(true);
+                          setShowUserMenu(false);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-slate-50 text-slate-700 font-semibold flex items-center gap-2 transition cursor-pointer"
+                      >
+                        <User className="w-4 h-4 text-emerald-600" />
+                        <span>Account Details</span>
+                      </button>
+                    </div>
+
+                    <div className="border-t border-slate-100 pt-1">
+                      <button
+                        onClick={async () => {
+                          setShowUserMenu(false);
+                          try {
+                            await authClient.signOut();
+                          } catch (e) {}
+                          setCachedUser(null);
+                          setIsAdmin(false);
+                          localStorage.removeItem('wharunner_auth_user');
+                          localStorage.removeItem('wharunner_authenticated_user');
+                          localStorage.removeItem('wharunner_user_email');
+                          localStorage.removeItem('wharunner_user_is_admin');
+                          setCurrentView('browse');
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-rose-50 text-rose-700 font-bold flex items-center gap-2 transition cursor-pointer"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        <span>Sign Out</span>
+                      </button>
+                    </div>
                   </div>
-                </>
-              ) : (
-                <>
-                  <KeyRound className="w-4 h-4 text-emerald-600" />
-                  <span className="font-bold text-slate-800">Sign In</span>
-                </>
-              )}
-            </button>
+                )}
+              </div>
+            ) : (
+              /* Unauthenticated User: Show Sign In button */
+              <button
+                onClick={() => setShowAuthModal(true)}
+                className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm transition cursor-pointer"
+                title="Sign in or register"
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>Sign In</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -302,6 +492,29 @@ export default function App() {
             onProfileUpdated={loadMessengers}
           />
         )}
+
+        {/* Screen 8: Dedicated Admin Console & KYC Desk */}
+        {currentView === 'admin' && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <button
+                onClick={() => setCurrentView('browse')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+              >
+                ← Back to Runners
+              </button>
+              <span className="text-xs font-bold text-amber-900 bg-amber-100 px-3 py-1 rounded-full border border-amber-300 flex items-center gap-1.5">
+                <span>👑</span>
+                <span>Administrator Console & KYC Desk</span>
+              </span>
+            </div>
+            <AdminDashboard
+              messengers={messengers}
+              onRefreshMessengers={loadMessengers}
+              currentUserEmail={currentUser?.email || 'comfort.designszw@gmail.com'}
+            />
+          </div>
+        )}
       </main>
 
       {/* Guest Orders Modal */}
@@ -322,6 +535,20 @@ export default function App() {
         onClose={() => setShowAuthModal(false)}
         onAuthSuccess={(details) => {
           loadMessengers();
+          if (details?.user) {
+            setCachedUser(details.user);
+            localStorage.setItem('wharunner_auth_user', JSON.stringify(details.user));
+            localStorage.setItem('wharunner_authenticated_user', JSON.stringify(details.user));
+            localStorage.setItem('wharunner_user_email', details.user.email || '');
+            const email = details.user.email?.toLowerCase();
+            const isAdminUser = Boolean(
+              details.user.isAdmin ||
+              details.user.role === 'admin' ||
+              email === 'comfort.designszw@gmail.com'
+            );
+            setIsAdmin(isAdminUser);
+            localStorage.setItem('wharunner_user_is_admin', isAdminUser ? 'true' : 'false');
+          }
           if (details?.isNewUser) {
             setRegisteredUserName(details.user?.name || 'Friend');
             setCurrentView('browse');

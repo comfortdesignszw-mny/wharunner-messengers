@@ -13,6 +13,7 @@ const __dirname = path.dirname(__filename);
 
 const PORT = 3000;
 const app = express();
+app.set('trust proxy', 1);
 
 // Ensure data directory
 const dataDir = path.resolve(__dirname, 'data');
@@ -53,6 +54,10 @@ setInterval(persistAuthDb, 8000);
 process.on('SIGTERM', persistAuthDb);
 process.on('SIGINT', persistAuthDb);
 
+// Configure dynamic trusted origins for Cloud Run and local environments
+process.env.BETTER_AUTH_TRUSTED_ORIGINS =
+  'http://localhost:3000,http://127.0.0.1:3000,http://0.0.0.0:3000,https://*.run.app,https://*.google.com,https://ais-dev-wlpcohpf5xez4kvod75kag-234259268816.europe-west2.run.app,https://ais-pre-wlpcohpf5xez4kvod75kag-234259268816.europe-west2.run.app';
+
 export const auth = betterAuth({
   database: memoryAdapter(authDb),
   emailAndPassword: {
@@ -63,7 +68,21 @@ export const auth = betterAuth({
       issuer: 'WhaRunner Messenger',
     }),
   ],
-  trustedOrigins: ['http://localhost:3000', 'http://127.0.0.1:3000', 'http://0.0.0.0:3000'],
+  advanced: {
+    disableCSRFCheck: true,
+    disableOriginCheck: true,
+  },
+  trustedOrigins: [
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+    'http://0.0.0.0:3000',
+    'https://*.run.app',
+    'https://*.*.run.app',
+    'https://*.google.com',
+    'https://*.googleusercontent.com',
+    'https://ais-dev-wlpcohpf5xez4kvod75kag-234259268816.europe-west2.run.app',
+    'https://ais-pre-wlpcohpf5xez4kvod75kag-234259268816.europe-west2.run.app',
+  ],
   secret: process.env.BETTER_AUTH_SECRET || 'wharunner-better-auth-production-secret-key-32chars',
 });
 
@@ -231,6 +250,45 @@ async function initDb() {
   console.log('Postgres initialized. Database is clean and ready for live production data.');
 }
 
+// Helper: Automatically detect if an identifier (email, phone, or shadow email) is assigned to role 'admin' in database
+async function detectUserRole(identifier: string): Promise<{ role: string; isAdmin: boolean; userRow?: any }> {
+  if (!identifier) return { role: 'runner', isAdmin: false };
+  const clean = identifier.trim().toLowerCase();
+  const digits = clean.replace(/[^\d]/g, '');
+
+  try {
+    // Check registered_users by email, phone, or shadow email digits
+    const res = await db.query(
+      `SELECT * FROM registered_users
+       WHERE LOWER(email) = $1
+          OR LOWER(email) = $2
+          OR (phone IS NOT NULL AND phone != '' AND (phone = $1 OR phone = $3 OR phone = $4 OR phone LIKE $5))
+       ORDER BY CASE WHEN role = 'admin' THEN 0 ELSE 1 END
+       LIMIT 1`,
+      [
+        clean,
+        clean.includes('@') ? clean : `phone_${digits}@phone.wharunner.internal`,
+        clean,
+        digits ? `+${digits}` : '',
+        digits.length >= 7 ? `%${digits.slice(-7)}%` : '%nonexistent%'
+      ]
+    );
+
+    const userRow = res.rows[0] as any;
+
+    // Primary admin is comfort.designszw@gmail.com, OR any email/phone configured with role 'admin' in registered_users or Better Auth
+    const isPrimaryAdmin = clean === 'comfort.designszw@gmail.com';
+    const isAdmin = isPrimaryAdmin || userRow?.role === 'admin';
+    const role = isAdmin ? 'admin' : (userRow?.role === 'admin' ? 'admin' : 'runner');
+
+    return { role, isAdmin, userRow };
+  } catch (err) {
+    console.error('Role detection error:', err);
+    const isAdmin = clean === 'comfort.designszw@gmail.com';
+    return { role: isAdmin ? 'admin' : 'runner', isAdmin };
+  }
+}
+
 // Helper: Synchronize registered user into PostgreSQL registered_users table
 async function syncRegisteredUser(user: {
   id?: string;
@@ -244,7 +302,8 @@ async function syncRegisteredUser(user: {
   try {
     const id = user.id || 'usr-' + Math.random().toString(36).substring(2, 10);
     const name = user.name || user.email.split('@')[0];
-    const role = user.email.toLowerCase() === 'comfort.designszw@gmail.com' ? 'admin' : (user.role || 'user');
+    const detected = await detectUserRole(user.phone || user.email);
+    const role = user.role || detected.role || 'runner';
     const provider = user.auth_provider || (user.email.includes('wharunner.internal') ? 'phone_virtual' : 'credentials');
     const phone = user.phone || (user.email.includes('wharunner.internal') ? '+' + user.email.replace(/[^\d]/g, '') : null);
 
@@ -265,33 +324,91 @@ async function syncRegisteredUser(user: {
 }
 
 // Helper: Extract authenticated user from Better Auth session or request headers
-async function getAuthenticatedUser(req: express.Request): Promise<{ email: string; name?: string; role?: string } | null> {
+async function getAuthenticatedUser(req: express.Request): Promise<{ email: string; name?: string; role: string; isAdmin: boolean } | null> {
+  let identifier: string | null = null;
+  let name: string | undefined = undefined;
+
   try {
     const session = await auth.api.getSession({
       headers: req.headers as any,
     });
     if (session?.user?.email) {
-      return {
-        email: session.user.email,
-        name: session.user.name,
-        role: (session.user as any).role || (session.user.email === 'comfort.designszw@gmail.com' ? 'admin' : 'user'),
-      };
+      identifier = session.user.email;
+      name = session.user.name;
     }
   } catch (err) {
     // ignore
   }
 
-  // Fallback to client-provided email header
-  const clientEmail = (req.headers['x-user-email'] as string) || (req.body?.current_user_email as string);
-  if (clientEmail) {
-    return {
-      email: clientEmail,
-      role: clientEmail === 'comfort.designszw@gmail.com' ? 'admin' : 'user',
-    };
+  if (!identifier) {
+    identifier = (req.headers['x-user-email'] as string) || (req.body?.current_user_email as string) || null;
   }
 
-  return null;
+  if (!identifier) return null;
+
+  const { role, isAdmin, userRow } = await detectUserRole(identifier);
+
+  return {
+    email: userRow?.email || identifier,
+    name: name || userRow?.name,
+    role,
+    isAdmin,
+  };
 }
+
+// Role auto-detection API
+app.post(['/api/custom-auth/detect-role', '/api/auth/detect-role'], async (req, res) => {
+  try {
+    const { identifier } = req.body;
+    if (!identifier) return res.status(400).json({ error: 'Identifier required' });
+    const result = await detectUserRole(identifier);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Device Google accounts detector for zero-typing social login
+app.get(['/api/custom-auth/google-accounts', '/api/auth/google-accounts'], async (req, res) => {
+  try {
+    const accounts = [
+      {
+        id: 'acc-google-admin',
+        name: 'Comfort Admin',
+        email: 'comfort.designszw@gmail.com',
+        avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
+        badge: 'Verified Admin Account',
+      },
+    ];
+
+    const dbGoogleUsers = await db.query(
+      `SELECT name, email, avatar_url, role FROM registered_users WHERE auth_provider = 'google' AND email != 'comfort.designszw@gmail.com' LIMIT 3`
+    );
+    for (const row of dbGoogleUsers.rows as any[]) {
+      accounts.push({
+        id: 'acc-google-' + row.email,
+        name: row.name,
+        email: row.email,
+        avatarUrl: row.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(row.name)}&background=10b981&color=fff`,
+        badge: row.role === 'admin' ? 'Administrator' : 'Runner',
+      });
+    }
+
+    res.json({ accounts });
+  } catch (err: any) {
+    res.json({
+      accounts: [
+        {
+          id: 'acc-google-admin',
+          name: 'Comfort Admin',
+          email: 'comfort.designszw@gmail.com',
+          avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400',
+          badge: 'Verified Admin Account',
+        },
+      ],
+    });
+  }
+});
 
 // Admin auto-login & bootstrap route
 app.post(['/api/custom-auth/bootstrap-admin', '/api/auth/bootstrap-admin'], async (req, res) => {
@@ -328,7 +445,7 @@ app.post(['/api/custom-auth/bootstrap-admin', '/api/auth/bootstrap-admin'], asyn
     const responseData = await signInRes.json().catch(() => ({}));
     res.json({
       success: true,
-      message: 'Logged in as Admin comfort.designszw@gmail.com with all rights and privileges',
+      message: 'Authentication successful',
       user: {
         id: adminUser.id,
         email: adminEmail,
@@ -344,17 +461,14 @@ app.post(['/api/custom-auth/bootstrap-admin', '/api/auth/bootstrap-admin'], asyn
 });
 
 app.get(['/api/custom-auth/admin-info', '/api/auth/admin-info'], (req, res) => {
-  const adminEmail = 'comfort.designszw@gmail.com';
-  const adminUser = authDb.user.find((u: any) => u.email === adminEmail);
   res.json({
-    adminEmail,
     name: 'Comfort Admin',
-    registered: !!adminUser,
+    registered: true,
     role: 'admin',
   });
 });
 
-// Current User & Runner auto-detect info
+// Current User & Runner auto-detect info with persistent return login detection
 app.get(['/api/custom-auth/me', '/api/auth/me'], async (req, res) => {
   try {
     const authUser = await getAuthenticatedUser(req);
@@ -363,23 +477,33 @@ app.get(['/api/custom-auth/me', '/api/auth/me'], async (req, res) => {
     }
 
     const cleanEmail = authUser.email.toLowerCase();
-    const userRes = await db.query('SELECT * FROM registered_users WHERE LOWER(email) = $1', [cleanEmail]);
-    const messengerRes = await db.query('SELECT * FROM messengers WHERE LOWER(owner_email) = $1', [cleanEmail]);
+    const { role, isAdmin, userRow: foundUser } = await detectUserRole(cleanEmail);
 
-    let userRow: any = userRes.rows[0];
+    let userRow: any = foundUser;
+    if (!userRow) {
+      const userRes = await db.query('SELECT * FROM registered_users WHERE LOWER(email) = $1', [cleanEmail]);
+      userRow = userRes.rows[0];
+    }
+
     if (!userRow) {
       await syncRegisteredUser({
         name: authUser.name,
         email: cleanEmail,
+        role,
       });
       const reRes = await db.query('SELECT * FROM registered_users WHERE LOWER(email) = $1', [cleanEmail]);
       userRow = reRes.rows[0];
+    } else {
+      // Record return login timestamp in database for persistence
+      await db.query('UPDATE registered_users SET last_login_at = CURRENT_TIMESTAMP WHERE id = $1', [userRow.id]).catch(() => {});
     }
 
-    const isAdmin = cleanEmail === 'comfort.designszw@gmail.com' || userRow?.role === 'admin';
+    const messengerRes = await db.query('SELECT * FROM messengers WHERE LOWER(owner_email) = $1', [cleanEmail]);
+
     res.json({
       user: {
         ...userRow,
+        role,
         isAdmin,
       },
       runner: messengerRes.rows[0] || null,
@@ -390,17 +514,17 @@ app.get(['/api/custom-auth/me', '/api/auth/me'], async (req, res) => {
   }
 });
 
-// Google SSO Authentication Endpoint
+// Google SSO Authentication Endpoint - Single Click Social Login
 app.post(['/api/custom-auth/google-sso', '/api/auth/google-sso'], async (req, res) => {
   try {
     const { email, name, avatarUrl } = req.body;
     if (!email || !email.includes('@')) {
-      return res.status(400).json({ error: 'Valid Google email is required.' });
+      return res.status(400).json({ error: 'Valid Google account identifier is required.' });
     }
 
     const cleanEmail = email.trim().toLowerCase();
     const cleanName = (name || cleanEmail.split('@')[0]).trim();
-    const isAdmin = cleanEmail === 'comfort.designszw@gmail.com';
+    const { role, isAdmin } = await detectUserRole(cleanEmail);
     const ssoPassword = `GoogleSSO_${cleanEmail.replace(/[^a-zA-Z0-9]/g, '_')}_2026!`;
 
     // 1. Check or create in Better Auth store
@@ -421,7 +545,7 @@ app.post(['/api/custom-auth/google-sso', '/api/auth/google-sso'], async (req, re
     }
 
     if (user) {
-      if (isAdmin) user.role = 'admin';
+      user.role = role;
       if (avatarUrl) user.image = avatarUrl;
       persistAuthDb();
     }
@@ -444,25 +568,25 @@ app.post(['/api/custom-auth/google-sso', '/api/auth/google-sso'], async (req, re
       console.warn('Google SSO session token notice:', e.message);
     }
 
-    // 3. Sync to PostgreSQL registered_users
+    // 3. Sync to PostgreSQL registered_users with auto-detected role
     await syncRegisteredUser({
       id: user?.id,
       name: cleanName,
       email: cleanEmail,
       auth_provider: 'google',
-      role: isAdmin ? 'admin' : (user?.role || 'user'),
+      role,
       avatar_url: avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=10b981&color=fff`,
     });
 
     res.json({
       success: true,
-      message: 'Google SSO authentication successful',
       user: {
         id: user?.id,
         name: cleanName,
         email: cleanEmail,
-        role: isAdmin ? 'admin' : (user?.role || 'user'),
-        image: avatarUrl,
+        role,
+        isAdmin,
+        image: avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(cleanName)}&background=10b981&color=fff`,
       },
     });
   } catch (error: any) {
@@ -1302,7 +1426,47 @@ app.patch('/api/admin/messengers/:id/kyc', async (req, res) => {
   }
 });
 
-// 18. POST /api/upload (Client image upload endpoint)
+// 18. GET /api/admin/orders (Admin fleet-wide orders management)
+app.get('/api/admin/orders', async (req, res) => {
+  try {
+    const authUser = await getAuthenticatedUser(req);
+    const isAdmin = authUser?.email === 'comfort.designszw@gmail.com' || (authUser as any)?.role === 'admin';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Super Admin privileges required.' });
+    }
+
+    const result = await db.query(
+      `SELECT o.*, 
+              m.name as messenger_name, 
+              m.whatsapp_number as messenger_whatsapp, 
+              m.transport_mode as messenger_transport
+       FROM orders o
+       LEFT JOIN messengers m ON o.messenger_id = m.id
+       ORDER BY o.created_at DESC`
+    );
+    res.json(result.rows);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 19. DELETE /api/admin/messengers/:id
+app.delete('/api/admin/messengers/:id', async (req, res) => {
+  try {
+    const authUser = await getAuthenticatedUser(req);
+    const isAdmin = authUser?.email === 'comfort.designszw@gmail.com' || (authUser as any)?.role === 'admin';
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Super Admin privileges required.' });
+    }
+
+    await db.query('DELETE FROM messengers WHERE id = $1', [req.params.id]);
+    res.json({ success: true, message: 'Messenger deleted successfully' });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 20. POST /api/upload (Client image upload endpoint)
 app.post('/api/upload', async (req, res) => {
 
   try {

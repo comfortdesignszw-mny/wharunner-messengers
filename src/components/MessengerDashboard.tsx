@@ -220,7 +220,7 @@ export const MessengerDashboard: React.FC<MessengerDashboardProps> = ({
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
             <span className="text-xs font-black text-slate-900">
-              Admin Console Auto-Detected: comfort.designszw@gmail.com
+              Administrator Console • Privileged Access
             </span>
           </div>
 

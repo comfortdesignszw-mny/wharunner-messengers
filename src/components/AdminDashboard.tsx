@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import type { Messenger, AdminStats, OrderStatus } from '../types';
-import { TRANSPORT_MODE_LABELS } from '../utils/whatsapp';
+import type { Messenger, AdminStats, OrderStatus, Order } from '../types';
+import { TRANSPORT_MODE_LABELS, ERRAND_TYPE_LABELS, buildWhatsAppDeepLink } from '../utils/whatsapp';
+import {
+  cacheAdminMessengers,
+  getCachedAdminMessengers,
+  cacheAdminUsers,
+  getCachedAdminUsers,
+  cacheAdminOrders,
+  getCachedAdminOrders,
+  cacheAdminStats,
+  getCachedAdminStats,
+} from '../lib/db';
 import {
   Users,
   Package,
@@ -24,21 +34,29 @@ import {
   Trash2,
   Mail,
   Phone,
+  MessageCircle,
+  MapPin,
+  Bike,
 } from 'lucide-react';
 
 interface AdminDashboardProps {
   messengers: Messenger[];
   onRefreshMessengers: () => void;
+  currentUserEmail?: string;
 }
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   messengers: initialMessengers,
   onRefreshMessengers,
+  currentUserEmail = 'comfort.designszw@gmail.com',
 }) => {
-  const [activeTab, setActiveTab] = useState<'kyc' | 'overview' | 'users'>('kyc');
+  const [activeTab, setActiveTab] = useState<'kyc' | 'overview' | 'orders' | 'users'>('kyc');
   const [allMessengers, setAllMessengers] = useState<Messenger[]>(initialMessengers);
   const [registeredUsers, setRegisteredUsers] = useState<any[]>([]);
+  const [allOrders, setAllOrders] = useState<any[]>([]);
   const [userSearch, setUserSearch] = useState('');
+  const [orderSearch, setOrderSearch] = useState('');
+  const [orderStatusFilter, setOrderStatusFilter] = useState<string>('all');
   const [stats, setStats] = useState<AdminStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -53,25 +71,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const fetchAdminData = async () => {
     try {
       setLoading(true);
-      const [statsRes, messengersRes, usersRes] = await Promise.all([
-        fetch('/api/admin/stats'),
-        fetch('/api/admin/messengers'),
-        fetch('/api/admin/users'),
+      // 1. Immediately load local cache for instantaneous UX
+      const cachedStats = getCachedAdminStats();
+      if (cachedStats) setStats(cachedStats);
+
+      const [cMessengers, cUsers, cOrders] = await Promise.all([
+        getCachedAdminMessengers(),
+        getCachedAdminUsers(),
+        getCachedAdminOrders(),
+      ]);
+      if (cMessengers.length > 0) setAllMessengers(cMessengers);
+      if (cUsers.length > 0) setRegisteredUsers(cUsers);
+      if (cOrders.length > 0) setAllOrders(cOrders);
+
+      // 2. Fetch fresh live data from Postgres backend with Admin authorization
+      const adminHeaders = {
+        'x-user-email': currentUserEmail || 'comfort.designszw@gmail.com',
+      };
+
+      const [statsRes, messengersRes, usersRes, ordersRes] = await Promise.all([
+        fetch('/api/admin/stats', { headers: adminHeaders, credentials: 'include' }),
+        fetch('/api/admin/messengers', { headers: adminHeaders, credentials: 'include' }),
+        fetch('/api/admin/users', { headers: adminHeaders, credentials: 'include' }),
+        fetch('/api/admin/orders', { headers: adminHeaders, credentials: 'include' }),
       ]);
 
       if (statsRes.ok) {
         const statsData = await statsRes.json();
         setStats(statsData);
+        cacheAdminStats(statsData);
       }
 
       if (messengersRes.ok) {
         const messengersData = await messengersRes.json();
         setAllMessengers(messengersData);
+        await cacheAdminMessengers(messengersData);
       }
 
       if (usersRes.ok) {
         const usersData = await usersRes.json();
         setRegisteredUsers(usersData);
+        await cacheAdminUsers(usersData);
+      }
+
+      if (ordersRes.ok) {
+        const ordersData = await ordersRes.json();
+        setAllOrders(ordersData);
+        await cacheAdminOrders(ordersData);
       }
     } catch (err) {
       console.error('Failed to fetch admin data:', err);
@@ -84,13 +130,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     try {
       const res = await fetch(`/api/admin/users/${userId}/role`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': currentUserEmail || 'comfort.designszw@gmail.com',
+        },
+        credentials: 'include',
         body: JSON.stringify({ role: newRole }),
       });
       if (res.ok) {
-        setRegisteredUsers((prev) =>
-          prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
-        );
+        const updated = registeredUsers.map((u) => (u.id === userId ? { ...u, role: newRole } : u));
+        setRegisteredUsers(updated);
+        await cacheAdminUsers(updated);
       }
     } catch (e) {
       alert('Failed to update user role');
@@ -100,9 +150,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleDeleteUser = async (userId: string, userEmail: string) => {
     if (!confirm(`Are you sure you want to remove user ${userEmail}?`)) return;
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-email': currentUserEmail || 'comfort.designszw@gmail.com',
+        },
+        credentials: 'include',
+      });
       if (res.ok) {
-        setRegisteredUsers((prev) => prev.filter((u) => u.id !== userId));
+        const updated = registeredUsers.filter((u) => u.id !== userId);
+        setRegisteredUsers(updated);
+        await cacheAdminUsers(updated);
       } else {
         const err = await res.json().catch(() => ({}));
         alert(err.error || 'Failed to remove user');
@@ -112,9 +170,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleDeleteMessenger = async (messengerId: string, messengerName: string) => {
+    if (!confirm(`Are you sure you want to permanently delete runner ${messengerName}?`)) return;
+    try {
+      const res = await fetch(`/api/admin/messengers/${messengerId}`, {
+        method: 'DELETE',
+        headers: {
+          'x-user-email': currentUserEmail || 'comfort.designszw@gmail.com',
+        },
+        credentials: 'include',
+      });
+      if (res.ok) {
+        const updated = allMessengers.filter((m) => m.id !== messengerId);
+        setAllMessengers(updated);
+        await cacheAdminMessengers(updated);
+        onRefreshMessengers();
+      } else {
+        alert('Failed to delete runner profile');
+      }
+    } catch (e) {
+      alert('Network error while deleting runner');
+    }
+  };
+
   useEffect(() => {
     fetchAdminData();
-  }, []);
+  }, [currentUserEmail]);
 
   const handleKycAction = async (
     messengerId: string,
@@ -126,7 +207,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setUpdatingId(messengerId);
       const res = await fetch(`/api/admin/messengers/${messengerId}/kyc`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': currentUserEmail || 'comfort.designszw@gmail.com',
+        },
+        credentials: 'include',
         body: JSON.stringify({
           is_verified: isVerified,
           kyc_status: status,
@@ -135,7 +220,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       });
 
       if (res.ok) {
-        await fetchAdminData();
+        const updated = await res.json();
+        const updatedList = allMessengers.map((m) => (m.id === messengerId ? updated : m));
+        setAllMessengers(updatedList);
+        await cacheAdminMessengers(updatedList);
         onRefreshMessengers();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -154,11 +242,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       setUpdatingId(messenger.id);
       const res = await fetch(`/api/admin/messengers/${messenger.id}/deactivate`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-email': currentUserEmail || 'comfort.designszw@gmail.com',
+        },
+        credentials: 'include',
         body: JSON.stringify({ is_active: !messenger.is_active }),
       });
       if (res.ok) {
-        await fetchAdminData();
+        const updated = await res.json();
+        const updatedList = allMessengers.map((m) => (m.id === messenger.id ? updated : m));
+        setAllMessengers(updatedList);
+        await cacheAdminMessengers(updatedList);
         onRefreshMessengers();
       }
     } catch (e) {
@@ -194,8 +289,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-xl font-extrabold text-slate-900">Admin Control & KYC Desk</h2>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-[11px] font-extrabold">
-              👑 comfort.designszw@gmail.com (Super Admin)
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 border border-emerald-300 text-[11px] font-extrabold flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
+              Verified Administrator
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
@@ -230,8 +326,19 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
+              <Bike className="w-3.5 h-3.5" />
+              <span>Fleet ({allMessengers.length})</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 ${
+                activeTab === 'orders'
+                  ? 'bg-white text-emerald-800 shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
               <Package className="w-3.5 h-3.5" />
-              <span>Fleet & Orders</span>
+              <span>Orders ({allOrders.length})</span>
             </button>
             <button
               onClick={() => setActiveTab('users')}
@@ -705,17 +812,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         </span>
                       </td>
                       <td className="py-3 text-right">
-                        <button
-                          onClick={() => handleToggleActive(m)}
-                          disabled={updatingId === m.id}
-                          className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition ${
-                            m.is_active
-                              ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
-                              : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                          }`}
-                        >
-                          {m.is_active ? 'Deactivate' : 'Reactivate'}
-                        </button>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            onClick={() => handleToggleActive(m)}
+                            disabled={updatingId === m.id}
+                            className={`px-3 py-1.5 rounded-xl font-bold text-[11px] transition ${
+                              m.is_active
+                                ? 'bg-rose-50 text-rose-700 hover:bg-rose-100'
+                                : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                            }`}
+                          >
+                            {m.is_active ? 'Deactivate' : 'Reactivate'}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMessenger(m.id, m.name)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                            title="Delete runner permanently"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -726,7 +842,159 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 3: REGISTERED USERS & ACCOUNTS */}
+      {/* TAB 3: PLATFORM ERRANDS & ORDERS MANAGEMENT */}
+      {activeTab === 'orders' && (
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-extrabold text-slate-900">Live Errands & Order Dispatch</h3>
+              <p className="text-xs text-slate-500">
+                Monitor all platform errand deliveries across Zimbabwe, review negotiated fees, and contact parties on WhatsApp.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <select
+                value={orderStatusFilter}
+                onChange={(e) => setOrderStatusFilter(e.target.value)}
+                className="px-3 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+              >
+                <option value="all">All Statuses ({allOrders.length})</option>
+                <option value="pending">Pending</option>
+                <option value="negotiating">Negotiating</option>
+                <option value="accepted">Accepted</option>
+                <option value="in_progress">In Progress</option>
+                <option value="completed">Completed</option>
+                <option value="rejected">Rejected</option>
+              </select>
+
+              <div className="relative w-full sm:w-56">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                <input
+                  type="text"
+                  value={orderSearch}
+                  onChange={(e) => setOrderSearch(e.target.value)}
+                  placeholder="Search orderer, shop, address..."
+                  className="w-full pl-9 pr-3 py-1.5 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-emerald-500 focus:outline-hidden"
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-slate-200 text-slate-400 font-bold uppercase text-[10px]">
+                  <th className="pb-3">Order ID & Type</th>
+                  <th className="pb-3">Customer</th>
+                  <th className="pb-3">Assigned Runner</th>
+                  <th className="pb-3">Pickup → Delivery</th>
+                  <th className="pb-3">Scheduled</th>
+                  <th className="pb-3">Fee (USD)</th>
+                  <th className="pb-3">Status</th>
+                  <th className="pb-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {allOrders
+                  .filter((o) => {
+                    if (orderStatusFilter !== 'all' && o.status !== orderStatusFilter) return false;
+                    if (orderSearch.trim()) {
+                      const q = orderSearch.toLowerCase();
+                      return (
+                        o.id.toLowerCase().includes(q) ||
+                        o.orderer_name?.toLowerCase().includes(q) ||
+                        o.orderer_whatsapp?.toLowerCase().includes(q) ||
+                        o.shop_name?.toLowerCase().includes(q) ||
+                        o.pickup_address?.toLowerCase().includes(q) ||
+                        o.delivery_address?.toLowerCase().includes(q)
+                      );
+                    }
+                    return true;
+                  })
+                  .map((order) => {
+                    const errandLabel = ERRAND_TYPE_LABELS[order.errand_type as keyof typeof ERRAND_TYPE_LABELS]?.label || order.errand_type;
+                    const finalFee = order.agreed_charge || order.proposed_charge;
+                    return (
+                      <tr key={order.id} className="hover:bg-slate-50/70 transition">
+                        <td className="py-3">
+                          <div className="font-bold text-slate-900 font-mono text-[11px]">{order.id}</div>
+                          <div className="text-[11px] text-slate-500">{errandLabel}</div>
+                        </td>
+                        <td className="py-3">
+                          <div className="font-bold text-slate-800">{order.orderer_name}</div>
+                          <div className="font-mono text-slate-500 text-[11px] flex items-center gap-1">
+                            <Phone className="w-3 h-3 text-emerald-600" />
+                            <span>{order.orderer_whatsapp}</span>
+                          </div>
+                        </td>
+                        <td className="py-3">
+                          {order.messenger_name ? (
+                            <div>
+                              <div className="font-bold text-slate-800">{order.messenger_name}</div>
+                              <div className="font-mono text-slate-500 text-[11px]">{order.messenger_whatsapp}</div>
+                            </div>
+                          ) : (
+                            <span className="text-slate-400 italic">Unassigned</span>
+                          )}
+                        </td>
+                        <td className="py-3 max-w-[200px]">
+                          <div className="truncate text-slate-700">📍 {order.pickup_address}</div>
+                          <div className="truncate text-slate-500">🏁 {order.delivery_address}</div>
+                        </td>
+                        <td className="py-3 text-slate-600 font-mono text-[11px]">
+                          {order.scheduled_datetime ? new Date(order.scheduled_datetime).toLocaleString() : 'ASAP'}
+                        </td>
+                        <td className="py-3 font-bold text-slate-900">
+                          ${finalFee?.toFixed(2)}
+                          {order.agreed_charge && order.agreed_charge !== order.proposed_charge && (
+                            <span className="block text-[10px] text-emerald-700 font-medium">(negotiated)</span>
+                          )}
+                        </td>
+                        <td className="py-3">
+                          <span
+                            className={`px-2 py-0.5 rounded-full font-bold text-[10px] uppercase ${
+                              order.status === 'completed'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : order.status === 'in_progress'
+                                ? 'bg-indigo-100 text-indigo-800'
+                                : order.status === 'accepted'
+                                ? 'bg-teal-100 text-teal-800'
+                                : order.status === 'negotiating'
+                                ? 'bg-blue-100 text-blue-800'
+                                : order.status === 'pending'
+                                ? 'bg-amber-100 text-amber-800'
+                                : 'bg-rose-100 text-rose-800'
+                            }`}
+                          >
+                            {order.status}
+                          </span>
+                        </td>
+                        <td className="py-3 text-right">
+                          <a
+                            href={buildWhatsAppDeepLink(
+                              order.orderer_whatsapp,
+                              `Hello ${order.orderer_name}, this is WhaRunner Admin desk regarding order ${order.id}.`
+                            )}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] transition"
+                            title="Chat with Customer on WhatsApp"
+                          >
+                            <MessageCircle className="w-3.5 h-3.5" />
+                            <span>WhatsApp</span>
+                          </a>
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 4: REGISTERED USERS & ACCOUNTS */}
       {activeTab === 'users' && (
         <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

@@ -8,7 +8,8 @@
       "updatedAt": "2026-09-30T16:45:48.458Z",
       "twoFactorEnabled": false,
       "id": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
-      "role": "admin"
+      "role": "admin",
+      "image": "https://ui-avatars.com/api/?name=Munyaradzi%20Muchineripi&background=10b981&color=fff"
     }
   ],
   "session": [
@@ -21,6 +22,206 @@
       "userAgent": "",
       "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
       "id": "QODfkugUeaUf5BqIG7UEEnIyn5wI5c4e"
+    },
+    {
+      "expiresAt": "2026-10-08T07:38:09.885Z",
+      "token": "7lcHxlRbY72C3yCvqcunpKctzLHK329r",
+      "createdAt": "2026-10-01T07:38:09.886Z",
+      "updatedAt": "2026-10-01T07:38:09.886Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "IykJ2tukTQOjUMOFthaZLc4gnocKIP0m"
+    },
+    {
+      "expiresAt": "2026-10-08T07:38:10.044Z",
+      "token": "UHBFIjtnreMdpVsLGQHi15Ld8Fijkbxz",
+      "createdAt": "2026-10-01T07:38:10.044Z",
+      "updatedAt": "2026-10-01T07:38:10.044Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "SxwH3r1ROBi56SXuoJylIP1EpWKxzNwu"
+    },
+    {
+      "expiresAt": "2026-10-08T07:38:12.836Z",
+      "token": "u76k8pKi8i5k0bWQHIwUOkFDL4UQfrbD",
+      "createdAt": "2026-10-01T07:38:12.836Z",
+      "updatedAt": "2026-10-01T07:38:12.836Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "3JcW0UTs8feLxv1lG18aBvfiX6AOPpR2"
+    },
+    {
+      "expiresAt": "2026-10-08T07:38:13.121Z",
+      "token": "fCfR5IfUtESvUinzpc652rFVnz89QYVe",
+      "createdAt": "2026-10-01T07:38:13.121Z",
+      "updatedAt": "2026-10-01T07:38:13.121Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "Yh5948S7DomIGIeD8i1lsIeuZY2HLutw"
+    },
+    {
+      "expiresAt": "2026-10-08T07:45:37.956Z",
+      "token": "CsdgNQGwZwLSFI0wKc6Xm65DBOzfd9cU",
+      "createdAt": "2026-10-01T07:45:37.956Z",
+      "updatedAt": "2026-10-01T07:45:37.956Z",
+      "ipAddress": "127.0.0.1",
+      "userAgent": "curl/7.88.1",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "8lAMqnIRe020BYOsH0glPCXkJBw8QXRK"
+    },
+    {
+      "expiresAt": "2026-10-08T07:47:07.812Z",
+      "token": "CnYfHwQ4xQDS4rElcwjLxTHfpwYzfr8d",
+      "createdAt": "2026-10-01T07:47:07.813Z",
+      "updatedAt": "2026-10-01T07:47:07.813Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "JTQgmU11Kr4MUKFlA7S49Cazp9j803hl"
+    },
+    {
+      "expiresAt": "2026-10-08T07:47:07.999Z",
+      "token": "numqUXS0ki2XFou1aysLdI2H3wLCuyVj",
+      "createdAt": "2026-10-01T07:47:07.999Z",
+      "updatedAt": "2026-10-01T07:47:07.999Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "vQxNCpER48YpcCU1Lo0cF5PnP5ly48mV"
+    },
+    {
+      "expiresAt": "2026-10-08T07:47:08.223Z",
+      "token": "ruwckCyOx7eA2kcT4FskDTi6iLaTDrv2",
+      "createdAt": "2026-10-01T07:47:08.223Z",
+      "updatedAt": "2026-10-01T07:47:08.223Z",
+      "ipAddress": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "0hDr4LRzm2lcDu1fo6cLL6K6OlV5T1iy"
+    },
+    {
+      "expiresAt": "2026-10-08T07:47:08.404Z",
+      "token": "TLAt3lF5l6KFJgiRQtXRrva3V97VzaPe",
+      "createdAt": "2026-10-01T07:47:08.404Z",
+      "updatedAt": "2026-10-01T07:47:08.404Z",
+      "ipAddress": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "7FpgD0x2d1Dm0a5tTzxVftCbXN04dtD5"
+    },
+    {
+      "expiresAt": "2026-10-08T08:04:34.902Z",
+      "token": "KXQ7iKNr4fSpZXMcKVOjMQKfBmREmJ9m",
+      "createdAt": "2026-10-01T08:04:34.902Z",
+      "updatedAt": "2026-10-01T08:04:34.902Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "uSeXnYKOAKLo6FxEu6DACpbn1WON5SX3"
+    },
+    {
+      "expiresAt": "2026-10-08T08:04:35.062Z",
+      "token": "4VquKdRshNfs0ime1X6LJm09xC09hIMA",
+      "createdAt": "2026-10-01T08:04:35.062Z",
+      "updatedAt": "2026-10-01T08:04:35.062Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "VEUYc829LdbcFluXlTnqOv38L5uTF1Ew"
+    },
+    {
+      "expiresAt": "2026-10-08T08:04:35.348Z",
+      "token": "5ovfFIS1mLcTEtuIBlqaHCV7RnyeXc2Y",
+      "createdAt": "2026-10-01T08:04:35.348Z",
+      "updatedAt": "2026-10-01T08:04:35.348Z",
+      "ipAddress": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "3fnPEk6nh4bAD6oaEs7T88P2BDCy7anr"
+    },
+    {
+      "expiresAt": "2026-10-08T08:04:35.551Z",
+      "token": "YJyLJHX1fuzxUigfTMu6seg3ICsaWgMC",
+      "createdAt": "2026-10-01T08:04:35.551Z",
+      "updatedAt": "2026-10-01T08:04:35.551Z",
+      "ipAddress": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "bvNU3EH3yq1cUNoezo1UOrIilK36hMgY"
+    },
+    {
+      "expiresAt": "2026-10-08T08:07:46.824Z",
+      "token": "AFVOItmsMcRWpAH6u2JyE3S7pEnR8ZyY",
+      "createdAt": "2026-10-01T08:07:46.824Z",
+      "updatedAt": "2026-10-01T08:07:46.824Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "sDPClgvMqdno71kyda4Kr0a68mQ6U1Ji"
+    },
+    {
+      "expiresAt": "2026-10-08T08:07:47.142Z",
+      "token": "w0ZtylxC39K1ScYOfV53iehdDHBZdjFf",
+      "createdAt": "2026-10-01T08:07:47.142Z",
+      "updatedAt": "2026-10-01T08:07:47.142Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "PVQydDvIq8XsJg8rdbWmd7If2S0ISKzH"
+    },
+    {
+      "expiresAt": "2026-10-08T08:07:47.337Z",
+      "token": "cnkZPUvbKqmbSByFfVuzhNwjUvtq4JuE",
+      "createdAt": "2026-10-01T08:07:47.338Z",
+      "updatedAt": "2026-10-01T08:07:47.338Z",
+      "ipAddress": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "FWXVhFimPq15ROLIe9Jvx6ReSCT40peX"
+    },
+    {
+      "expiresAt": "2026-10-08T08:07:47.690Z",
+      "token": "NpdLUpkYic9y6cnHidKgHUvJmblB7psx",
+      "createdAt": "2026-10-01T08:07:47.690Z",
+      "updatedAt": "2026-10-01T08:07:47.690Z",
+      "ipAddress": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "4gZGicZ2tavy7qQWRnqQu3kIA1AxVxZr"
+    },
+    {
+      "expiresAt": "2026-10-08T08:11:38.858Z",
+      "token": "DQwiDn0M2ZAsJcITzDBAbawzsPKnqANf",
+      "createdAt": "2026-10-01T08:11:38.858Z",
+      "updatedAt": "2026-10-01T08:11:38.858Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "w20qaUleJW5OQUgdRkZGsUyHbDsXgngP"
+    },
+    {
+      "expiresAt": "2026-10-08T08:21:20.303Z",
+      "token": "Z6uS40nVbi7O89RJBpeSqib5v2uZD0ai",
+      "createdAt": "2026-10-01T08:21:20.304Z",
+      "updatedAt": "2026-10-01T08:21:20.304Z",
+      "ipAddress": "",
+      "userAgent": "",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "SxpRDpCQG0cLhs108IoZaxtZHGF2qAvr"
+    },
+    {
+      "expiresAt": "2026-10-08T08:21:20.747Z",
+      "token": "9nJivZBvPUvrWacJhsUrHRkrSlADVAQT",
+      "createdAt": "2026-10-01T08:21:20.747Z",
+      "updatedAt": "2026-10-01T08:21:20.747Z",
+      "ipAddress": "127.0.0.1",
+      "userAgent": "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/153.0.0.0 Mobile Safari/537.36",
+      "userId": "Q7jTqYPPxHa9ZAiHupNCj09o8ItTMOZ8",
+      "id": "tLL2iK8vb3pcXAUUKbCdt5op7zKTEv5i"
     }
   ],
   "account": [

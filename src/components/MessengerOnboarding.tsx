@@ -288,7 +288,7 @@ export const MessengerOnboarding: React.FC<MessengerOnboardingProps> = ({
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>
-                Account Linked: <strong>{session.user.name}</strong> ({session.user.email})
+                Account Linked: <strong>{session.user.name}</strong>
               </span>
             </div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-800 bg-white px-2 py-0.5 rounded-md border border-emerald-200">
